@@ -10,8 +10,6 @@ import {
   cellGeometry,
   gridSpacing,
   headingGeometry,
-  previewCardMaxWidth,
-  previewCardMinWidth,
   publishers,
   resolveFontWeight,
   type Asset,
@@ -24,6 +22,7 @@ export function GridPreview({
   board,
   assets,
   captionRows,
+  zoom = 1,
   onFrame,
   heading,
   bottomControls,
@@ -33,6 +32,7 @@ export function GridPreview({
   board: Board;
   assets: Asset[];
   captionRows: number;
+  zoom?: number;
   onFrame: (frame: HTMLDivElement | null) => void;
   heading: (rows: number) => ReactNode;
   bottomControls: ReactNode;
@@ -103,31 +103,19 @@ export function GridPreview({
       );
       const availableWidth = workspaceWidth + 12;
       const availableHeight = workspaceHeight + 12;
-      const fitCellWidth = (headingRows: number) =>
-        Math.max(
-          previewCardMinWidth,
-          Math.min(
-            previewCardMaxWidth,
-            availableWidth / widthRatio,
-            availableHeight /
-              (boardHeightRatio +
-                (board.headingVisible
-                  ? headingGeometry(board, 1, headingRows).height +
-                    headingGapRatio
-                  : 0)),
-          ),
-        );
+      const imageHeight = 100 / (3 / 4);
+      const cellWidth =
+        ((imageHeight * 600) / cellGeometry(board, 600, 0).imageHeight) * zoom;
       let headingRows = 1;
       if (board.headingVisible) {
         for (; headingRows < 3; headingRows++) {
-          const width = fitCellWidth(headingRows);
           const headingWidth =
-            Math.min(availableWidth, width * widthRatio) -
-            width * paddingRatio -
-            Math.max(12, width * paddingRatio);
+            Math.min(availableWidth, cellWidth * widthRatio) -
+            cellWidth * paddingRatio -
+            Math.max(12, cellWidth * paddingRatio);
           if (
-            layoutHeading(context, board, width, headingWidth).lines.length <=
-            headingRows
+            layoutHeading(context, board, cellWidth, headingWidth).lines
+              .length <= headingRows
           )
             break;
         }
@@ -138,16 +126,16 @@ export function GridPreview({
       const headingAreaRatio = board.headingVisible
         ? headingRatio + headingGapRatio + paddingRatio
         : 0;
-      const cellWidth = fitCellWidth(headingRows);
       const boardWidth = cellWidth * widthRatio;
       const viewportWidth = Math.max(1, Math.min(availableWidth, boardWidth));
+      const leadingSpace = boardWidth + 104 <= workspaceWidth;
       const height = Math.max(
         1,
         cellWidth *
           (boardHeightRatio - (board.headingVisible ? paddingRatio : 0)),
       );
       const next = {
-        width: viewportWidth + 60,
+        width: viewportWidth + (leadingSpace ? 104 : 60),
         frameHeight: height + cellWidth * headingAreaRatio + 60,
         previewWidth: viewportWidth,
         controlsHeight: Math.min(
@@ -205,7 +193,9 @@ export function GridPreview({
     board.cells,
     assets,
     captionRows,
+    zoom,
   ]);
+  const leadingSpace = Boolean(size && size.width > size.previewWidth + 60);
   const palette = publishers[board.publisher];
   return (
     <div
@@ -213,12 +203,14 @@ export function GridPreview({
       data-overlay-scroll="both"
       className="relative min-h-0 flex-1 overflow-auto overscroll-x-contain"
     >
-      <div className="canvas-area sticky top-0 left-0 m-0! flex h-full min-h-0 w-full shrink-0 flex-col justify-center-safe p-3! pr-0! pb-0!">
+      <div
+        className={`canvas-area sticky top-0 left-0 m-0! flex h-full min-h-0 w-full shrink-0 flex-col justify-center-safe p-3! pb-0! ${leadingSpace ? "" : "pr-0!"}`}
+      >
         <GridResizer
           ref={attachFrame}
           bottomControls={bottomControls}
           sideControls={sideControls}
-          leadingSpace={false}
+          leadingSpace={leadingSpace}
           viewportHeight={size?.height}
           controlsHeight={size?.controlsHeight}
           previewWidth={size?.previewWidth}

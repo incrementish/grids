@@ -658,20 +658,25 @@ for (const [mode, controlsTest] of [
                 const content = document
                   .querySelector("[data-preview-content]")
                   .getBoundingClientRect();
+                const balanced = document
+                  .querySelector("[data-resize-frame]")
+                  .hasAttribute("data-balanced-controls");
                 return {
                   controlsReachable:
                     rows.top >= workspace.top &&
                     rows.bottom <= workspace.bottom + 1,
                   controlsAboveTabs: rows.bottom <= workspace.bottom,
-                  noLeadingButtonSpace:
-                    Math.abs(content.left - frame.left) <= 1,
+                  balancedControlSpace:
+                    Math.abs(content.left - frame.left - (balanced ? 52 : 0)) <=
+                      1 &&
+                    (!balanced || frame.width <= workspace.width - 24 + 1),
                 };
               }),
             )
             .toEqual({
               controlsReachable: true,
               controlsAboveTabs: true,
-              noLeadingButtonSpace: true,
+              balancedControlSpace: true,
             });
           await expect(
             page.getByRole("button", { name: "Add row", exact: true }),
@@ -1361,12 +1366,177 @@ for (const failure of ["malformed", "blocked"]) {
   });
 }
 
+test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
+  page,
+}, testInfo) => {
+  await setEditorViewport(page, { width: 1440, height: 900 });
+  await page.goto("./");
+  const zoom = page.getByRole("slider", { name: "Zoom", exact: true });
+  const card = page.locator("#board-grid > .grid-cell").first();
+  const checkZoomLayout = async () => {
+    const field = zoom.locator("..");
+    await expect(field).toHaveClass(/flex-col/);
+    await expect(field).toHaveCSS("row-gap", "4px");
+    await expect(zoom).toHaveCSS("height", "32px");
+    await expect(field.locator("label")).toHaveClass("field-label");
+    await expect
+      .poll(() =>
+        field.evaluate((element) => {
+          const label = element.querySelector("label").getBoundingClientRect();
+          const slider = element.querySelector("input").getBoundingClientRect();
+          const output = element
+            .querySelector("output")
+            .getBoundingClientRect();
+          const field = element.getBoundingClientRect();
+          const header = element.closest("header").getBoundingClientRect();
+          const action = element
+            .closest("header")
+            .querySelector("#export-grid-header")
+            .getBoundingClientRect();
+          return (
+            label.bottom <= slider.top &&
+            Math.abs(output.right - field.right) < 1 &&
+            Math.abs(
+              field.y + field.height / 2 - header.y - header.height / 2,
+            ) < 1 &&
+            Math.abs(
+              action.y + action.height / 2 - header.y - header.height / 2,
+            ) < 1
+          );
+        }),
+      )
+      .toBe(true);
+  };
+  const checkWidth = async (width) => {
+    await expect
+      .poll(async () => (await card.boundingBox()).width)
+      .toBeCloseTo(width, 1);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const workspace = document.querySelector("[data-workspace-scroll]");
+          const area = workspace.querySelector(".canvas-area");
+          const frame = area.querySelector("[data-resize-frame]");
+          const boardWidth = parseFloat(
+            frame.style.getPropertyValue("--preview-board-width"),
+          );
+          const balanced = boardWidth + 104 <= area.clientWidth - 24;
+          const canvas = frame
+            .querySelector("[data-preview-content]")
+            .getBoundingClientRect();
+          const bounds = workspace.getBoundingClientRect();
+          return (
+            frame.hasAttribute("data-balanced-controls") === balanced &&
+            (!balanced ||
+              Math.abs(
+                canvas.x + canvas.width / 2 - bounds.x - bounds.width / 2,
+              ) < 1)
+          );
+        }),
+      )
+      .toBe(true);
+  };
+  await expect(zoom).toHaveValue("100");
+  await expect(zoom).toHaveAttribute("min", "50");
+  await expect(zoom).toHaveAttribute("max", "200");
+  await checkZoomLayout();
+  for (const [shape, width] of [
+    ["portrait", 100],
+    ["landscape", 100 * (16 / 9)],
+    ["square", 100 * (4 / 3)],
+  ]) {
+    await selectField(page, "image-shape", shape);
+    await checkWidth(width);
+    await zoom.fill("50");
+    await checkWidth(width / 2);
+    await zoom.fill("200");
+    await checkWidth(width * 2);
+    await page.locator("#export-grid-header").click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    const exportSummary = await dialog.innerText();
+    await page
+      .getByRole("button", { name: "Close dialog", exact: true })
+      .click();
+    await zoom.fill("50");
+    await page.locator("#export-grid-header").click();
+    await expect(dialog).toBeVisible();
+    expect(await dialog.innerText()).toBe(exportSummary);
+    await page
+      .getByRole("button", { name: "Close dialog", exact: true })
+      .click();
+    await zoom.fill("100");
+    await zoom.fill("100");
+  }
+  await page.getByRole("button", { name: "Add column", exact: true }).click();
+  await checkWidth(100 * (4 / 3));
+  await page.screenshot({
+    path: testInfo.outputPath("canvas-zoom-desktop.png"),
+  });
+  for (const viewport of [
+    { width: 960, height: 360 },
+    { width: 390, height: 844 },
+    { width: 260, height: 560 },
+  ]) {
+    await setEditorViewport(page, viewport);
+    await checkWidth(100 * (4 / 3));
+    await expect(zoom).toBeInViewport({ ratio: 1 });
+    await expect(page.locator("#export-grid-header")).toBeInViewport({
+      ratio: 1,
+    });
+    await checkZoomLayout();
+    await zoom.fill("50");
+    await checkWidth(100 * (2 / 3));
+    await zoom.fill("200");
+    await checkWidth(100 * (8 / 3));
+    await zoom.fill("100");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  }
+  for (const [width, zoomWidth, compactExport] of [
+    [450, 160, false],
+    [449, 160, true],
+    [400, 160, true],
+    [320, 160, true],
+    [280, 80, true],
+    [260, 80, true],
+    [1440, 160, false],
+  ]) {
+    await setEditorViewport(page, { width, height: 844 });
+    await expect(zoom.locator("..")).toHaveCSS("width", `${zoomWidth}px`);
+    await expect
+      .poll(() =>
+        page
+          .locator("[data-canvas-header]")
+          .getAttribute("data-compact-export"),
+      )
+      .toBe(compactExport ? "true" : null);
+    await expect(
+      page.locator("[data-header-brand] [data-brand-label]"),
+    ).toHaveCSS("position", compactExport ? "absolute" : "static");
+    await expect(page.locator("#export-grid-header > span")).toHaveCSS(
+      "position",
+      compactExport ? "absolute" : "static",
+    );
+    await expect(page.locator("[data-header-brand] a")).toBeVisible();
+    await checkZoomLayout();
+  }
+  await setEditorViewport(page, { width: 390, height: 844 });
+  await page.screenshot({
+    path: testInfo.outputPath("canvas-zoom-mobile.png"),
+  });
+});
+
 test("canvas padding keeps overflow inside its viewport on short and narrow screens", async ({
   page,
 }, testInfo) => {
   await setEditorViewport(page, { width: 1440, height: 1000 });
   await page.goto("./");
   await openSidebarPanel(page, "Design");
+  await selectField(page, "image-shape", "square");
   for (const [id, initial] of [
     ["canvas-padding", "30"],
     ["gap", "20"],
@@ -1383,6 +1553,13 @@ test("canvas padding keeps overflow inside its viewport on short and narrow scre
     { width: 260, height: 560 },
   ]) {
     await setEditorViewport(page, size);
+    await expect
+      .poll(
+        async () =>
+          (await page.locator("#board-grid > .grid-cell").first().boundingBox())
+            .width,
+      )
+      .toBeCloseTo(100 / (3 / 4), 1);
     await expect
       .poll(() =>
         page.evaluate(() => {

@@ -140,9 +140,10 @@ export function GridResizer({
       style={style}
       data-resize-frame
       data-controls-placement={bottomControls ? "canvas" : "header"}
+      data-balanced-controls={leadingSpace || undefined}
       className={
         bottomControls
-          ? `grid min-h-0 min-w-0 ${leadingSpace ? "grid-cols-[44px_minmax(0,1fr)_44px] gap-2" : "grid-cols-[minmax(0,1fr)_44px] gap-2 pr-2 pb-2"} grid-rows-[minmax(0,1fr)_44px] [&_button:focus-visible]:-outline-offset-3!`
+          ? `grid min-h-0 min-w-0 ${leadingSpace ? "grid-cols-[44px_minmax(0,1fr)_44px] gap-2 pb-2" : "grid-cols-[minmax(0,1fr)_44px] gap-2 pr-2 pb-2"} grid-rows-[minmax(0,1fr)_44px] [&_button:focus-visible]:-outline-offset-3!`
           : "flex min-h-0 min-w-0 items-center justify-center"
       }
     >

@@ -108,6 +108,8 @@ export function EditorLayout({
   const headerBrand = useRef<HTMLDivElement>(null);
   const [brandInHeader, setBrandInHeader] = useState(false);
   const expandedExportSpacing = useRef(0);
+  const expandedBrandGap = useRef(0);
+  const [compactZoom, setCompactZoom] = useState(false);
   const [compactExport, setCompactExport] = useState(false);
   const [headerLayout, setHeaderLayout] = useState<
     "full" | "icon" | "shifted" | "scroll"
@@ -151,6 +153,21 @@ export function EditorLayout({
         range.getBoundingClientRect().width +
         icon.getBoundingClientRect().width +
         expandedExportSpacing.current;
+      const brandLink = branding.querySelector(".brand");
+      const brandLabel = branding.querySelector("[data-brand-label]");
+      const brandIconWidth =
+        branding.querySelector(".brand-mark")?.getBoundingClientRect().width ??
+        0;
+      if (!compactExport && brandLink)
+        expandedBrandGap.current = parseFloat(
+          getComputedStyle(brandLink).columnGap,
+        );
+      const brandRange = document.createRange();
+      if (brandLabel) brandRange.selectNodeContents(brandLabel);
+      const fullBrandWidth =
+        brandIconWidth +
+        expandedBrandGap.current +
+        brandRange.getBoundingClientRect().width;
       const gap = parseFloat(getComputedStyle(controls).columnGap);
       const children = [...controls.children];
       const controlsWidth =
@@ -162,31 +179,46 @@ export function EditorLayout({
       // Width-based so the result does not depend on the current layout mode.
       const headerWidth = headerElement.current?.clientWidth ?? 0;
       const zoneWidth = headerWidth - (!compact && sidebarOpen ? 350 : 0);
-      const controlsRight = zoneWidth / 2 + controlsWidth / 2;
       const actionsRight = headerWidth - 12;
       const otherActionsWidth =
         actions.getBoundingClientRect().width -
         exportButton.getBoundingClientRect().width;
-      const fits = (exportWidth: number) =>
-        actionsRight - otherActionsWidth - exportWidth >= controlsRight + gap;
-      const leftControlsRight =
-        parseFloat(getComputedStyle(controls).paddingLeft) + controlsWidth;
+      const zoomField = controls.querySelector("#canvas-zoom")?.parentElement;
+      const zoomWidth = zoomField?.getBoundingClientRect().width ?? 0;
+      const expandedZoomWidth = zoomWidth * (compactZoom ? 2 : 1);
+      const fullControlsWidth = controlsWidth + expandedZoomWidth - zoomWidth;
+      const fits = (exportWidth: number, width: number) =>
+        actionsRight - otherActionsWidth - exportWidth >=
+        zoneWidth / 2 + width / 2 + gap;
+      const brandFits = (brandWidth: number, width: number) =>
+        12 + brandWidth + gap <= zoneWidth / 2 - width / 2;
+      const nextCompactExport = window.matchMedia("(width < 450px)").matches;
       const iconWidth = exportButton.getBoundingClientRect().height;
-      const nextLayout = fits(fullExportWidth)
-        ? "full"
-        : fits(iconWidth)
+      const exportWidth = nextCompactExport ? iconWidth : fullExportWidth;
+      const brandWidth = nextCompactExport ? brandIconWidth : fullBrandWidth;
+      const controlsFit = (width: number) =>
+        fits(exportWidth, width) && brandFits(brandWidth, width);
+      const nextCompactZoom =
+        Boolean(zoomField) && !controlsFit(fullControlsWidth);
+      const nextControlsWidth =
+        fullControlsWidth - (nextCompactZoom ? expandedZoomWidth / 2 : 0);
+      const leftControlsRight =
+        parseFloat(getComputedStyle(controls).paddingLeft) + nextControlsWidth;
+      const nextLayout = fits(exportWidth, nextControlsWidth)
+        ? nextCompactExport
           ? "icon"
-          : actionsRight - otherActionsWidth - iconWidth >=
-              leftControlsRight + gap
-            ? "shifted"
-            : "scroll";
+          : "full"
+        : actionsRight - otherActionsWidth - exportWidth >=
+            leftControlsRight + gap
+          ? "shifted"
+          : "scroll";
       setHeaderLayout(nextLayout);
-      setCompactExport(nextLayout !== "full");
-      const brandLimit = controlsRight - controlsWidth;
+      setCompactZoom(nextCompactZoom);
+      setCompactExport(nextCompactExport);
       setBrandInHeader(
         nextLayout !== "shifted" &&
           nextLayout !== "scroll" &&
-          12 + branding.getBoundingClientRect().width + gap <= brandLimit,
+          brandFits(brandWidth, nextControlsWidth),
       );
     };
     measure();
@@ -205,14 +237,31 @@ export function EditorLayout({
       observer.disconnect();
       document.fonts.removeEventListener("loadingdone", measure);
     };
-  }, [compact, sidebarOpen, headerLayout, compactExport, controlsInHeader]);
+  }, [
+    compact,
+    sidebarOpen,
+    headerLayout,
+    compactZoom,
+    compactExport,
+    controlsInHeader,
+  ]);
   const [library, workspace, themes] = children;
   const brand = (
-    <a className="brand shrink-0" href="./">
+    <a
+      className="brand shrink-0 group-data-compact-export/header:gap-0"
+      href="./"
+      aria-label="Gridz"
+      title="Gridz"
+    >
       <span className="brand-mark">
         <PanelsTopLeft />
       </span>
-      Gridz
+      <span
+        data-brand-label
+        className="whitespace-nowrap group-data-compact-export/header:sr-only"
+      >
+        Gridz
+      </span>
     </a>
   );
   const canvasActions = (
@@ -224,7 +273,7 @@ export function EditorLayout({
         data-header-brand
         aria-hidden={!brandInHeader}
         inert={!brandInHeader}
-        className={`absolute top-0 left-3 flex h-11 items-center ${brandInHeader ? "" : "pointer-events-none invisible"}`}
+        className={`absolute top-1/2 left-3 flex h-11 -translate-y-1/2 items-center ${brandInHeader ? "" : "pointer-events-none invisible"}`}
       >
         {brand}
       </div>
@@ -240,7 +289,7 @@ export function EditorLayout({
         ref={headerActions}
         role="group"
         aria-label={t("editor.panels")}
-        className={`flex items-center gap-2 ${headerLayout === "scroll" ? "relative my-3 shrink-0" : "absolute top-0 right-3"}`}
+        className={`flex items-center gap-2 ${headerLayout === "scroll" ? "relative my-3 shrink-0" : "absolute top-1/2 right-3 -translate-y-1/2"}`}
       >
         {actions}
         {!compact && (
@@ -273,6 +322,7 @@ export function EditorLayout({
       data-canvas-header
       data-header-layout={headerLayout}
       data-brand-placement={brandInHeader ? "header" : "aside"}
+      data-compact-zoom={compactZoom ? true : undefined}
       data-compact-export={compactExport ? true : undefined}
       data-overlay-scroll={headerLayout === "scroll" ? "none" : "x"}
       className={`group/header relative col-span-full flex min-h-19 w-full shrink-0 overflow-y-hidden ${headerLayout === "scroll" ? "items-stretch overflow-x-hidden" : "items-center overflow-x-auto py-3"} border-0 border-b border-solid border-ui-border bg-ui-background [&_button:focus-visible]:-outline-offset-3!`}

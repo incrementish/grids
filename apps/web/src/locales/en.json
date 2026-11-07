@@ -181,6 +181,7 @@
     }
   },
   "editor": {
+    "zoom": "Zoom",
     "tools": "Tools",
     "panels": "Editor panels",
     "images": "Images",

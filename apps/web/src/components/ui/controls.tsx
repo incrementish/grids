@@ -42,7 +42,7 @@ import {
 
 const rangeFieldStyles = cva("flex", {
   variants: {
-    layout: { stacked: "flex-col gap-2", inline: "items-center gap-3" },
+    layout: { stacked: "flex-col gap-1", inline: "items-center gap-3" },
   },
   defaultVariants: { layout: "stacked" },
 });
@@ -106,7 +106,7 @@ export function RangeField({
         value={value}
         disabled={disabled}
         aria-valuetext={valueText}
-        className={layout === "inline" ? "h-11 min-w-0 flex-1" : undefined}
+        className={layout === "inline" ? "h-11 min-w-0 flex-1" : "h-8"}
         onChange={(event) => onChange(Number(event.currentTarget.value))}
       />
       {layout === "inline" && result}

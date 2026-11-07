@@ -26,6 +26,7 @@ import {
   ColorField,
   IconRadioField,
   PercentField,
+  RangeField,
   SelectField,
 } from "./components/ui/controls";
 import { Modal } from "./components/ui/Modal";
@@ -231,6 +232,7 @@ export default function App() {
     (asset) => asset.trashedAt === undefined && !asset.libraryHidden,
   );
   const [headingEditing, setHeadingEditing] = useState(false);
+  const [zoom, setZoom] = useState(100);
   const [exportOpen, setExportOpen] = useState(false);
   const exportButton = useRef<HTMLButtonElement>(null);
   const [imageTarget, setImageTarget] = useState<string | null>(null);
@@ -769,7 +771,20 @@ export default function App() {
     <>
       <main className="app-layout relative h-dvh! min-h-0! min-w-0 grid-rows-[auto_minmax(0,1fr)]! transition-[grid-template-columns] duration-(--ui-motion-layout,180ms) ease-in-out motion-reduce:transition-none panel-right:grid! panel-right:grid-cols-[minmax(0,1fr)_0px]! panel-right:has-data-sidebar-open:grid-cols-[minmax(0,1fr)_350px]! panel-bottom:flex! panel-bottom:flex-col!">
         <EditorLayout
-          canvasControls={null}
+          canvasControls={
+            <RangeField
+              id="canvas-zoom"
+              label={t("editor.zoom")}
+              value={zoom}
+              output={`${zoom}%`}
+              valueText={`${zoom}%`}
+              min={50}
+              max={200}
+              step={5}
+              className="w-40 shrink-0 group-data-compact-zoom/header:w-20"
+              onChange={setZoom}
+            />
+          }
           resetPanel={renderResetPanel()}
           onResetOpen={clearResetSelection}
           resetDisabled={importProgress !== null || exporting}
@@ -911,6 +926,7 @@ export default function App() {
                 board={board}
                 assets={displayAssets}
                 captionRows={captionRows}
+                zoom={zoom / 100}
                 onFrame={setPreviewFrame}
                 bottomControls={
                   <GridResizeControls
