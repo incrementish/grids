@@ -26,6 +26,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Report dependency updates and vulnerabilities
+        continue-on-error: true
+        timeout-minutes: 3
+        run: |
+          npm outdated --workspaces --include-workspace-root > dependency-updates.txt 2>&1 || true
+          npm audit > dependency-audit.txt 2>&1 || true
+          {
+            printf '## Available dependency updates\n\n```text\n'
+            cat dependency-updates.txt
+            printf '\n```\n\n## Dependency security audit\n\n```text\n'
+            cat dependency-audit.txt
+            printf '\n```\n'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
       - run: npm run build
       - uses: actions/upload-artifact@v7
         with:
