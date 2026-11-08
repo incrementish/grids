@@ -243,6 +243,7 @@ export default function App() {
   const [libraryDragOver, setLibraryDragOver] = useState(false);
   const touchDragX = useMotionValue(0);
   const touchDragY = useMotionValue(0);
+  const touchDragTarget = useRef<HTMLElement | null>(null);
   const [cardDrag, setCardDrag] = useState<{
     source: CardDragSource;
     visual: CardDragVisual;
@@ -251,6 +252,7 @@ export default function App() {
   } | null>(null);
   useEffect(() => {
     const finish = () => {
+      touchDragTarget.current = null;
       setCardDrag(null);
       document
         .querySelectorAll(".image-card.drag-over")
@@ -581,13 +583,15 @@ export default function App() {
     finished: boolean,
     cancelled: boolean,
   ) => {
-    const targetId =
+    const target =
       document
         .elementFromPoint(visual.x, visual.y)
-        ?.closest(".grid-cell")
-        ?.getAttribute("data-cell-id") ?? null;
+        ?.closest<HTMLElement>(".grid-cell") ?? null;
+    const targetId = target?.getAttribute("data-cell-id") ?? null;
     const validTarget = board.cells.some((cell) => cell.id === targetId);
     if (finished || cancelled) {
+      touchDragTarget.current?.classList.remove("drag-over");
+      touchDragTarget.current = null;
       setCardDrag(null);
       if (!cancelled && validTarget && source.kind === "asset") {
         placeAsset(source.assetId, targetId!);
@@ -616,17 +620,22 @@ export default function App() {
         : visual;
     touchDragX.set(visual.x - previewVisual.offsetX);
     touchDragY.set(visual.y - previewVisual.offsetY - 8);
-    const nextTargetId =
+    const nextTarget =
       validTarget && (source.kind !== "cell" || source.cellId !== targetId)
-        ? targetId
+        ? target
         : null;
+    if (touchDragTarget.current !== nextTarget) {
+      touchDragTarget.current?.classList.remove("drag-over");
+      nextTarget?.classList.add("drag-over");
+      touchDragTarget.current = nextTarget;
+    }
     setCardDrag((current) =>
-      current?.touch && current.targetId === nextTargetId
+      current?.touch
         ? current
         : {
             source,
             visual: previewVisual,
-            targetId: nextTargetId,
+            targetId: null,
             touch: true,
           },
     );
@@ -1254,6 +1263,7 @@ export default function App() {
             <GridCell
               cell={cardDrag.visual.cell}
               asset={cardDrag.visual.asset}
+              previewImageSrc={cardDrag.visual.previewSrc}
               index={0}
               gridId={board.id}
               gridStyle={board}

@@ -31,6 +31,7 @@ import { CropEditor } from "./CropEditor";
 import { CardBorder, CardFrame } from "./CardFrame";
 import { centerTextArea, TextScrollbar } from "./TextScrollbar";
 import { contrastingColor } from "../canvasTheme";
+import { requestCardImage, retainCardImage } from "../browser/cardImages";
 
 const cardToolButtonStyles = cva(
   "pointer-events-auto absolute p-0! rounded-[2cqw]! border-white/30! bg-black/60! text-white [--control-hover-base:color-mix(in_srgb,black_60%,var(--card-background))] enabled:hover:control-hover! [&_svg]:size-[40%]!",
@@ -86,6 +87,7 @@ export type CardDragVisual = {
   offsetY: number;
   x: number;
   y: number;
+  previewSrc?: string;
 };
 
 export function GridCell({
@@ -112,6 +114,7 @@ export function GridCell({
   dragAffected = false,
   dragSource = false,
   previewOnly = false,
+  previewImageSrc,
   importing = false,
 }: {
   cell: Cell;
@@ -147,6 +150,7 @@ export function GridCell({
   dragAffected?: boolean;
   dragSource?: boolean;
   previewOnly?: boolean;
+  previewImageSrc?: string;
   importing?: boolean;
 }) {
   const coarsePointer = useCoarsePointer();
@@ -187,7 +191,11 @@ export function GridCell({
       touchDragged.current = true;
       setImageHovered(false);
       setHoverTools(false);
-      const bounds: DOMRect = memo ?? card.current.getBoundingClientRect();
+      const snapshot: { bounds: DOMRect; previewSrc?: string } = memo ?? {
+        bounds: card.current.getBoundingClientRect(),
+        previewSrc: card.current.querySelector("img")?.currentSrc || undefined,
+      };
+      const bounds = snapshot.bounds;
       const notify = () =>
         onTouchDrag(
           library
@@ -202,6 +210,7 @@ export function GridCell({
             offsetY: initial[1] - bounds.top,
             x: xy[0],
             y: xy[1],
+            previewSrc: snapshot.previewSrc,
           },
           last,
           canceled ||
@@ -219,7 +228,7 @@ export function GridCell({
           (args[0] as (() => void) | undefined)?.();
         });
       } else notify();
-      return bounds;
+      return snapshot;
     },
     {
       enabled:
@@ -271,7 +280,7 @@ export function GridCell({
       : 0,
   );
   const cropRectangle =
-    cell.crop && imageSize.width && imageSize.height
+    asset?.provenance && cell.crop && imageSize.width && imageSize.height
       ? sourceRectangle(
           cell.crop,
           imageSize.width,
@@ -279,6 +288,93 @@ export function GridCell({
           geometry.aspectRatio,
         )
       : null;
+  const [previewWidth, setPreviewWidth] = useState(0);
+  const [imageVisible, setImageVisible] = useState(false);
+  const [displayImage, setDisplayImage] = useState<{
+    original: string;
+    crop: string | undefined;
+    aspect: number;
+    src: string;
+  } | null>(null);
+  const cropKey = JSON.stringify(cell.crop);
+  useLayoutEffect(() => {
+    const button = trigger.current;
+    if (!button || !asset || asset.provenance || previewImageSrc) return;
+    const measure = () =>
+      setPreviewWidth(
+        Math.ceil((button.clientWidth * window.devicePixelRatio) / 32) * 32,
+      );
+    const resize = new ResizeObserver(measure);
+    resize.observe(button);
+    const visibility = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.some((entry) => entry.isIntersecting);
+        setImageVisible(visible);
+        if (!visible) setDisplayImage(null);
+      },
+      { rootMargin: "100px" },
+    );
+    visibility.observe(button);
+    measure();
+    return () => {
+      resize.disconnect();
+      visibility.disconnect();
+    };
+  }, [asset?.src, asset?.provenance, previewImageSrc]);
+  useEffect(() => {
+    if (
+      !asset ||
+      asset.provenance ||
+      !imageVisible ||
+      !previewWidth ||
+      previewImageSrc
+    )
+      return;
+    let disposed = false;
+    const request = requestCardImage(
+      asset.src,
+      previewWidth,
+      Math.max(1, Math.round(previewWidth / geometry.aspectRatio)),
+      cell.crop,
+    );
+    request.promise
+      .then((preview) => {
+        if (!disposed)
+          setDisplayImage({
+            original: asset.src,
+            crop: cropKey,
+            aspect: geometry.aspectRatio,
+            src: preview.src,
+          });
+      })
+      .catch(() => {
+        if (!disposed) setFailedImage(asset.src);
+      });
+    return () => {
+      disposed = true;
+      request.release();
+    };
+  }, [
+    asset?.src,
+    asset?.provenance,
+    cropKey,
+    geometry.aspectRatio,
+    imageVisible,
+    previewWidth,
+    previewImageSrc,
+  ]);
+  const imageSrc = asset?.provenance
+    ? asset.src
+    : (previewImageSrc ??
+      (displayImage?.original === asset?.src &&
+      displayImage?.crop === cropKey &&
+      displayImage?.aspect === geometry.aspectRatio
+        ? displayImage.src
+        : undefined));
+  useEffect(
+    () => (imageSrc ? retainCardImage(imageSrc) : undefined),
+    [imageSrc],
+  );
   const overlay = gridStyle.captionPlacement === "overlay";
   const alignment = gridStyle.captionAlignment ?? "bottom";
   const toolTop =
@@ -426,7 +522,7 @@ export function GridCell({
   return (
     <Popover
       ref={card}
-      className={`image-card @container relative min-w-0 border-0! -outline-offset-2 [--card-frame-color:transparent] data-image-hovered:[--card-frame-color:var(--card-frame-hover-color)] has-[[data-card-image]_button:focus-visible]:[--card-frame-color:var(--card-frame-hover-color)] ${previewOnly ? "drag-preview-card h-full w-full" : library ? `asset ${library.onSelect ? "cursor-pointer" : "cursor-move"} w-full!` : "grid-cell"}${!library && dragAffected && !dragSource ? " drag-over" : ""}`}
+      className={`image-card @container relative min-w-0 border-0! -outline-offset-2 [&.drag-over>[data-card-content]]:opacity-35! [--card-frame-color:transparent] data-image-hovered:[--card-frame-color:var(--card-frame-hover-color)] has-[[data-card-image]_button:focus-visible]:[--card-frame-color:var(--card-frame-hover-color)] ${previewOnly ? "drag-preview-card h-full w-full" : library ? `asset ${library.onSelect ? "cursor-pointer" : "cursor-move"} w-full!` : "grid-cell"}${!library && dragAffected && !dragSource ? " drag-over" : ""}`}
       style={
         {
           aspectRatio: `600 / ${geometry.height}`,
@@ -689,6 +785,9 @@ export function GridCell({
                         offsetY: event.clientY - bounds.top,
                         x: event.clientX,
                         y: event.clientY,
+                        previewSrc:
+                          card.current?.querySelector("img")?.currentSrc ||
+                          undefined,
                       },
                     );
                   }}
@@ -699,7 +798,7 @@ export function GridCell({
                 >
                   <img
                     className="pointer-events-none rounded-none! border-0!"
-                    src={asset.src || undefined}
+                    src={imageSrc || undefined}
                     crossOrigin={asset.provenance ? "anonymous" : undefined}
                     onError={() => setFailedImage(asset.src)}
                     referrerPolicy={
@@ -708,11 +807,12 @@ export function GridCell({
                     alt={cell.title || asset.title}
                     onLoad={(event) => {
                       setFailedImage(null);
-                      setLoadedImage(asset.src);
-                      setImageSize({
-                        width: event.currentTarget.naturalWidth,
-                        height: event.currentTarget.naturalHeight,
-                      });
+                      setLoadedImage(event.currentTarget.currentSrc);
+                      if (asset.provenance)
+                        setImageSize({
+                          width: event.currentTarget.naturalWidth,
+                          height: event.currentTarget.naturalHeight,
+                        });
                     }}
                     style={
                       cropRectangle
@@ -729,7 +829,7 @@ export function GridCell({
                     draggable={false}
                   />
                   {!previewOnly &&
-                    loadedImage !== asset.src &&
+                    loadedImage !== imageSrc &&
                     failedImage !== asset.src && (
                       <span
                         role="status"

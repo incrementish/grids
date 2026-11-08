@@ -6982,7 +6982,8 @@ for (const viewportWidth of [1440, 780]) {
     ).toBe(true);
 
     const source = await images.nth(0).locator("img").boundingBox();
-    expect(source.width).toBeGreaterThan(picture.width * 3);
+    expect(source.width).toBeCloseTo(picture.width, 1);
+    expect(source.height).toBeCloseTo(picture.height, 1);
     expect(
       await images.nth(0).evaluate((button) => {
         const bounds = button.getBoundingClientRect();
@@ -12110,6 +12111,216 @@ test("library cards support mouse and touch copying on touch-capable desktops", 
   await page.screenshot({
     path: testInfo.outputPath("bottom-library-board-sized-drag.png"),
   });
+  await session.detach();
+  await context.close();
+});
+
+test("large local images use bounded cropped previews without decoding during touch dragging", async ({
+  browser,
+}, testInfo) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+    deviceScaleFactor: 2,
+  });
+  const page = await context.newPage();
+  await page.goto("./");
+  const original = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 4096;
+    canvas.height = 3072;
+    const drawing = canvas.getContext("2d");
+    drawing.fillStyle = "#0066cc";
+    drawing.fillRect(0, 0, canvas.width, canvas.height);
+    drawing.fillStyle = "#ff0000";
+    drawing.fillRect(1024, 0, 2048, canvas.height);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await page.locator("#upload").setInputFiles({
+    name: "Large photo.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(original, "base64"),
+  });
+  const libraryImage = page.locator("#asset-library img").first();
+  await expect
+    .poll(() => libraryImage.evaluate((image) => image.naturalWidth))
+    .toBeGreaterThan(0);
+  const cells = page.locator(".grid-cell");
+  await cells.first().locator(".cell-image-button").tap();
+  await page
+    .getByRole("dialog", { name: "Choose image", exact: true })
+    .getByRole("button", { name: "Use Large photo", exact: true })
+    .tap();
+  const image = cells.first().locator("img");
+  await expect
+    .poll(() => image.evaluate((element) => element.naturalWidth))
+    .toBeGreaterThan(0);
+  const previewSize = await image.evaluate((element) => ({
+    width: element.naturalWidth,
+    height: element.naturalHeight,
+    displayedWidth: element.clientWidth,
+    density: devicePixelRatio,
+  }));
+  expect(previewSize.width).toBeLessThanOrEqual(
+    previewSize.displayedWidth * previewSize.density + 32,
+  );
+  expect(previewSize.width * previewSize.height).toBeLessThan(
+    (4096 * 3072) / 100,
+  );
+  await cells.first().locator(".cell-image-button").tap();
+  await cells
+    .first()
+    .getByRole("button", { name: "Crop image", exact: true })
+    .tap();
+  const crop = page.getByRole("dialog", { name: "Crop image", exact: true });
+  await expect
+    .poll(() =>
+      crop
+        .getByRole("img", { name: "Large photo", exact: true })
+        .evaluate((element) => element.naturalWidth),
+    )
+    .toBe(4096);
+  const beforeCrop = await image.getAttribute("src");
+  await crop.locator("#crop-zoom").fill("4");
+  await crop.getByRole("button", { name: "Apply crop", exact: true }).tap();
+  await expect(crop).toHaveCount(0);
+  await expect
+    .poll(() => image.evaluate((element) => element.naturalWidth))
+    .toBeGreaterThan(0);
+  const croppedSource = await image.getAttribute("src");
+  expect(croppedSource).not.toBe(beforeCrop);
+  const corner = await image.evaluate((element) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = element.naturalWidth;
+    canvas.height = element.naturalHeight;
+    const drawing = canvas.getContext("2d");
+    drawing.drawImage(element, 0, 0);
+    return [...drawing.getImageData(2, 2, 1, 1).data];
+  });
+  expect(corner).toEqual([255, 0, 0, 255]);
+  await cells.first().locator(".cell-image-button").tap();
+  const handle = cells
+    .first()
+    .getByRole("button", { name: "Drag image", exact: true });
+  await expect(handle).toBeVisible();
+  const source = await handle.boundingBox();
+  const target = await cells.nth(2).locator(".cell-image-button").boundingBox();
+  const start = {
+    x: source.x + source.width / 2,
+    y: source.y + source.height / 2,
+  };
+  const end = {
+    x: target.x + target.width / 2,
+    y: target.y + target.height / 2,
+  };
+  await page.evaluate(() => {
+    window.__previewDecodes = 0;
+    window.__originalBitmap = window.createImageBitmap;
+    window.createImageBitmap = function (...args) {
+      window.__previewDecodes++;
+      return window.__originalBitmap.apply(this, args);
+    };
+  });
+  const session = await context.newCDPSession(page);
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ ...start, id: 1 }],
+  });
+  for (let step = 1; step <= 8; step++) {
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [
+        {
+          x: start.x + ((end.x - start.x) * step) / 8,
+          y: start.y + ((end.y - start.y) * step) / 8,
+          id: 1,
+        },
+      ],
+    });
+    if (step === 1) {
+      await expect(page.locator("[data-drag-floating]")).toBeVisible();
+      await page.evaluate(
+        () =>
+          new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          ),
+      );
+      await page.evaluate(() => {
+        window.__dragControlReads = 0;
+        window.__originalScrollWidth = Object.getOwnPropertyDescriptor(
+          Element.prototype,
+          "scrollWidth",
+        );
+        Object.defineProperty(Element.prototype, "scrollWidth", {
+          ...window.__originalScrollWidth,
+          get() {
+            if (this.matches('[role="tab"] > span'))
+              window.__dragControlReads++;
+            return window.__originalScrollWidth.get.call(this);
+          },
+        });
+      });
+    }
+  }
+  await expect(page.locator("[data-drag-floating] img")).toHaveAttribute(
+    "src",
+    croppedSource,
+  );
+  await expect(cells.nth(2)).toHaveClass(/drag-over/);
+  await expect(cells.nth(2).locator("[data-card-content]")).toHaveCSS(
+    "opacity",
+    "0.35",
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("large-photo-mobile-drag.png"),
+  });
+  const decodes = await page.evaluate(() => {
+    window.createImageBitmap = window.__originalBitmap;
+    Object.defineProperty(
+      Element.prototype,
+      "scrollWidth",
+      window.__originalScrollWidth,
+    );
+    const count = {
+      images: window.__previewDecodes,
+      controls: window.__dragControlReads,
+    };
+    delete window.__originalBitmap;
+    delete window.__previewDecodes;
+    delete window.__originalScrollWidth;
+    delete window.__dragControlReads;
+    return count;
+  });
+  expect(decodes).toEqual({ images: 0, controls: 0 });
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  await expect(page.locator("[data-drag-floating]")).toHaveCount(0);
+  await expect(cells.nth(2).locator("img")).toHaveAttribute(
+    "alt",
+    "Large photo",
+  );
+  await page.evaluate(() => {
+    window.__exportImageWidths = [];
+    window.__originalDraw = CanvasRenderingContext2D.prototype.drawImage;
+    CanvasRenderingContext2D.prototype.drawImage = function (source, ...args) {
+      if (source instanceof HTMLImageElement)
+        window.__exportImageWidths.push(source.naturalWidth);
+      return window.__originalDraw.call(this, source, ...args);
+    };
+  });
+  await selectExportField(page, "resolution", "600");
+  await downloadBoard(page);
+  const exportedWidths = await page.evaluate(() => {
+    CanvasRenderingContext2D.prototype.drawImage = window.__originalDraw;
+    const widths = window.__exportImageWidths;
+    delete window.__originalDraw;
+    delete window.__exportImageWidths;
+    return widths;
+  });
+  expect(exportedWidths).toContain(4096);
   await session.detach();
   await context.close();
 });
