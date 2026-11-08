@@ -403,7 +403,7 @@ function hoverColorOf(control, base = "--bg") {
   }, base);
 }
 
-async function openDesignSection(page, title, customize = false) {
+async function openDesignSection(page, title) {
   const builder = page.locator("[data-theme-builder]");
   const toggle = builder.getByRole("button", {
     name: new RegExp(`^\\d ${title}`),
@@ -414,18 +414,6 @@ async function openDesignSection(page, title, customize = false) {
   await expect(builder.locator("fieldset[id^=theme-step-]")).toHaveCount(1);
   const panelId = await toggle.getAttribute("aria-controls");
   await expect(page.locator(`[id="${panelId}"]`)).toHaveCSS("opacity", "1");
-  if (customize) {
-    const details = builder.getByRole("button", {
-      name: `Customize ${title}`,
-      exact: true,
-    });
-    if ((await details.getAttribute("aria-expanded")) !== "true")
-      await details.click();
-    await expect(details).toHaveAttribute("aria-expanded", "true");
-    await expect(details).toHaveAttribute("aria-controls", /.+/);
-    const detailsId = await details.getAttribute("aria-controls");
-    await expect(page.locator(`[id="${detailsId}"]`)).toHaveCSS("opacity", "1");
-  }
 }
 
 async function openDesignControls(page, id) {
@@ -439,13 +427,7 @@ async function openDesignControls(page, id) {
           ? "Card headings"
           : "Layout";
   await openSidebarPanel(page, "Design");
-  await openDesignSection(
-    page,
-    title,
-    !["heading-font", "cell-font", "image-shape", "caption-position"].includes(
-      field,
-    ),
-  );
+  await openDesignSection(page, title);
 }
 
 async function selectField(page, id, value) {
@@ -807,9 +789,6 @@ test("overlay scrollbars keep compact panels and modals gutter-free", async ({
   await openSidebarPanel(page, "Design");
   await expect.poll(shelfHeight).toBeCloseTo(150, 0);
   await openDesignSection(page, "Colors");
-  await page
-    .getByRole("button", { name: "Customize Colors", exact: true })
-    .click();
   await expect
     .poll(() =>
       page.locator("[data-editor-sidebar]").evaluate((element) => ({
@@ -1215,8 +1194,8 @@ test("panel placement uses available width and height without losing selection",
     ).toHaveAttribute("aria-selected", "true");
     const bounds = await page.locator("[data-editor-sidebar]").boundingBox();
     if (layout === "right") {
-      expect(bounds.width).toBeCloseTo(350, 1);
-      expect(bounds.x).toBeCloseTo(width - 350, 1);
+      expect(bounds.width).toBeCloseTo(275, 1);
+      expect(bounds.x).toBeCloseTo(width - 275, 1);
       expect(bounds.y + bounds.height).toBeCloseTo(height, 1);
     } else {
       expect(bounds.width).toBeCloseTo(width, 1);
@@ -1232,7 +1211,7 @@ test("panel placement uses available width and height without losing selection",
   }
   await openSidebarPanel(page, "Images");
   for (const [height, ratio] of [
-    [720, 1],
+    [720, 3 / 4],
     [400, 3 / 4],
   ]) {
     await setEditorViewport(page, { width: 780, height });
@@ -1312,14 +1291,7 @@ touchTest(
         .toBe(true);
       const builder = sidebar.locator("[data-theme-builder]");
       await openDesignSection(page, "Colors");
-      const customizeColors = builder.getByRole("button", {
-        name: "Customize Colors",
-        exact: true,
-      });
-      if ((await customizeColors.getAttribute("aria-expanded")) !== "true")
-        await customizeColors.click();
-      await page.locator("#background-value").fill("#112233");
-      await page.locator("#background-value").press("Enter");
+      await page.locator("#background").fill("#112233");
       await openDesignSection(page, "Card headings");
       const showTitles = builder.getByRole("switch", {
         name: "Show titles",
@@ -1352,18 +1324,12 @@ touchTest(
     await expect(themes).toBeFocused();
     await themes.press("Enter");
     await openDesignSection(page, "Colors");
-    const customizeColors = page.getByRole("button", {
-      name: "Customize Colors",
-      exact: true,
-    });
-    if ((await customizeColors.getAttribute("aria-expanded")) !== "true")
-      await customizeColors.click();
-    await expect(page.locator("#background-value")).toHaveValue("#112233");
+    await expect(page.locator("#background")).toHaveValue("#112233");
   },
 );
 
 touchTest(
-  "compact image shelf keeps square uploads readable without changing placements",
+  "compact image shelf keeps matching upload tiles readable without changing placements",
   async ({ page }) => {
     await page.goto("./");
     await page.locator("#upload").setInputFiles(
@@ -1427,8 +1393,13 @@ touchTest(
         await expect(add).toBeInViewport({ ratio: 1 });
       }
       const uploadBounds = await add.boundingBox();
-      expect(uploadBounds.height).toBeCloseTo(125, 1);
-      expect(uploadBounds.width).toBeCloseTo(uploadBounds.height, 1);
+      expect(uploadBounds.height).toBeCloseTo(120, 1);
+      const thumbnailBounds = await library
+        .locator("[data-library-image]")
+        .first()
+        .boundingBox();
+      expect(uploadBounds.width).toBeCloseTo(thumbnailBounds.width, 1);
+      expect(uploadBounds.height).toBeCloseTo(thumbnailBounds.height, 1);
       for (const [index, label] of (
         await add.locator("[data-upload-label]").all()
       ).entries()) {
@@ -1529,6 +1500,206 @@ for (const failure of ["malformed", "blocked"]) {
   });
 }
 
+test("library and picker cards follow panel orientation without resizing canvas", async ({
+  page,
+}, testInfo) => {
+  await page.goto("./");
+  await page.locator("#upload").setInputFiles(
+    [
+      "Sizing A",
+      "Sizing B",
+      "Sizing C",
+      "Sizing D",
+      "Sizing E",
+      "Sizing F",
+      "Sizing G",
+    ].map((name) => ({
+      name: `${name}.svg`,
+      mimeType: "image/svg+xml",
+      buffer: Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500"><rect width="500" height="500" fill="#40b4aa"/></svg>',
+      ),
+    })),
+  );
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 800, height: 500 },
+    { width: 684, height: 844 },
+    { width: 600, height: 844 },
+    { width: 390, height: 844 },
+  ]) {
+    await setEditorViewport(page, viewport);
+    for (const [shape, ratio] of [
+      ["portrait", 3 / 4],
+      ["square", 1],
+      ["landscape", 4 / 3],
+    ]) {
+      await selectField(page, "image-shape", shape);
+      const canvas = page.locator("#board-grid > .grid-cell").first();
+      const library = page
+        .locator("#asset-library [data-library-image]")
+        .first();
+      const bottom =
+        (await page
+          .locator("[data-sidebar-track]")
+          .getAttribute("data-editor-layout")) === "bottom";
+      const cardAspect = await library.evaluate((element) => {
+        const [width, height = 1] = getComputedStyle(element)
+          .aspectRatio.split("/")
+          .map(Number);
+        return width / height;
+      });
+      const cardWidth = bottom ? 120 * cardAspect : 120;
+      if (!bottom)
+        await expect
+          .poll(() =>
+            page
+              .locator("#asset-library")
+              .evaluate(
+                (element) =>
+                  getComputedStyle(element).gridTemplateColumns.split(" ")
+                    .length,
+              ),
+          )
+          .toBe(2);
+      await expect
+        .poll(
+          async () =>
+            (
+              await page
+                .locator("#asset-library [data-upload-tile]")
+                .boundingBox()
+            ).width,
+        )
+        .toBeCloseTo(cardWidth, 1);
+      const upload = page.locator("#asset-library [data-upload-tile]");
+      await expect
+        .poll(() =>
+          upload.evaluate((element) => {
+            const button = element.getBoundingClientRect();
+            const wrapper = element.parentElement.getBoundingClientRect();
+            return wrapper.bottom - button.bottom;
+          }),
+        )
+        .toBeCloseTo(0, 1);
+      if (bottom)
+        await expect
+          .poll(async () => (await upload.boundingBox()).height)
+          .toBeCloseTo(120, 1);
+      for (const card of [canvas, library]) {
+        await expect
+          .poll(async () => (await card.boundingBox()).width)
+          .toBeCloseTo(card === canvas ? 100 : cardWidth, 1);
+        if (card === canvas) continue;
+        if (bottom)
+          await expect
+            .poll(async () => (await card.boundingBox()).height)
+            .toBeCloseTo(120, 1);
+        const image = card.locator(".library-image-button");
+        await expect
+          .poll(async () => {
+            const bounds = await image.boundingBox();
+            return bounds.width / bounds.height;
+          })
+          .toBeCloseTo(ratio, 2);
+      }
+      await canvas
+        .locator(".cell-image-button")
+        .click({ position: { x: 5, y: 5 } });
+      const picker = page.getByRole("dialog", {
+        name: "Choose image",
+        exact: true,
+      });
+      const available = Math.min(6 * cardWidth + 50 + 42, viewport.width - 32);
+      const columns = Math.max(
+        1,
+        Math.floor((available - 42 + 10) / (cardWidth + 10)),
+      );
+      await expect
+        .poll(() =>
+          picker
+            .locator('[role="region"] > .grid')
+            .evaluate(
+              (element) =>
+                getComputedStyle(element).gridTemplateColumns.split(" ").length,
+            ),
+        )
+        .toBe(columns);
+      await expect
+        .poll(
+          async () =>
+            (await picker.locator("[data-modal-panel]").boundingBox()).width,
+        )
+        .toBeCloseTo(columns * (cardWidth + 10) - 10 + 42, 1);
+      await expect
+        .poll(
+          async () =>
+            (await picker.locator("[data-upload-tile]").boundingBox()).width,
+        )
+        .toBeCloseTo(cardWidth, 1);
+      const thumbnail = picker.locator("[data-library-image]").first();
+      await expect
+        .poll(async () => (await thumbnail.boundingBox()).width)
+        .toBeCloseTo(cardWidth, 1);
+      if (bottom)
+        await expect
+          .poll(async () => (await thumbnail.boundingBox()).height)
+          .toBeCloseTo(120, 1);
+      await expect
+        .poll(async () => {
+          const bounds = await thumbnail
+            .locator(".library-image-button")
+            .boundingBox();
+          return bounds.width / bounds.height;
+        })
+        .toBeCloseTo(ratio, 2);
+      await expect(picker.locator("[data-modal-panel]")).toHaveCSS(
+        "opacity",
+        "1",
+      );
+      await expect(picker).toHaveCSS("opacity", "1");
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `cards-${bottom ? "bottom" : "aside"}-${viewport.width}-${shape}.png`,
+        ),
+      });
+      await picker
+        .getByRole("button", { name: "Close dialog", exact: true })
+        .click();
+      await expect(picker).toHaveCount(0);
+    }
+    await page.screenshot({
+      path: testInfo.outputPath(`cards-${viewport.width}.png`),
+    });
+  }
+  await page
+    .locator("#board-grid .cell-image-button")
+    .first()
+    .click({ position: { x: 5, y: 5 } });
+  const picker = page.getByRole("dialog", {
+    name: "Choose image",
+    exact: true,
+  });
+  const thumbnail = picker.locator("[data-library-image]").first();
+  await setEditorViewport(page, { width: 800, height: 500 });
+  await expect
+    .poll(async () => (await thumbnail.boundingBox()).width)
+    .toBeCloseTo(120, 1);
+  await expect
+    .poll(
+      async () =>
+        (await picker.locator("[data-modal-panel]").boundingBox()).width,
+    )
+    .toBeCloseTo(682, 1);
+  await setEditorViewport(page, { width: 390, height: 844 });
+  await expect
+    .poll(async () => (await thumbnail.boundingBox()).height)
+    .toBeCloseTo(120, 1);
+  await picker
+    .getByRole("button", { name: "Close dialog", exact: true })
+    .click();
+});
+
 test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
   page,
 }, testInfo) => {
@@ -1621,11 +1792,8 @@ test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
   await expect(zoom).toHaveAttribute("min", "50");
   await expect(zoom).toHaveAttribute("max", "200");
   await checkZoomLayout();
-  for (const [shape, width] of [
-    ["portrait", 100],
-    ["landscape", 100 * (16 / 9)],
-    ["square", 100 * (4 / 3)],
-  ]) {
+  for (const shape of ["portrait", "landscape", "square"]) {
+    const width = 100;
     await selectField(page, "image-shape", shape);
     await checkWidth(width);
     await zoom.fill("50");
@@ -1650,7 +1818,7 @@ test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
     await zoom.fill("100");
   }
   await page.getByRole("button", { name: "Add column", exact: true }).click();
-  await checkWidth(100 * (4 / 3));
+  await checkWidth(100);
   await page.screenshot({
     path: testInfo.outputPath("canvas-zoom-desktop.png"),
   });
@@ -1660,16 +1828,16 @@ test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
     { width: 260, height: 560 },
   ]) {
     await setEditorViewport(page, viewport);
-    await checkWidth(100 * (4 / 3));
+    await checkWidth(100);
     await expect(zoom).toBeInViewport({ ratio: 1 });
     await expect(page.locator("#export-grid-header")).toBeInViewport({
       ratio: 1,
     });
     await checkZoomLayout();
     await zoom.fill("50");
-    await checkWidth(100 * (2 / 3));
+    await checkWidth(50);
     await zoom.fill("200");
-    await checkWidth(100 * (8 / 3));
+    await checkWidth(200);
     await zoom.fill("100");
     expect(
       await page.evaluate(
@@ -1818,11 +1986,11 @@ test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
   });
   const historyLength = await page.evaluate(() => history.length);
   await zoom.fill("75");
-  await checkWidth(100);
+  await checkWidth(75);
   expect(await page.evaluate(() => history.length)).toBe(historyLength);
   await reloadWorkspace(page);
   await expect(zoom).toHaveValue("75");
-  await checkWidth(100);
+  await checkWidth(75);
 });
 
 test("canvas padding keeps overflow inside its viewport on short and narrow screens", async ({
@@ -2177,7 +2345,7 @@ test("settings sliders use normalized percentages and refined dark defaults", as
     "gap",
     "corner-rounding",
     "heading-font-size",
-    "heading-padding",
+    "cell-padding",
     "heading-font-weight",
     "cell-font-size",
     "cell-font-weight",
@@ -2193,6 +2361,7 @@ test("settings sliders use normalized percentages and refined dark defaults", as
         "caption-opacity": "75",
         "corner-rounding": "25",
         "canvas-padding": "30",
+        "cell-padding": "30",
         gap: "20",
       }[id] ?? "50";
     await expect(slider).toHaveAttribute("min", "0");
@@ -2235,7 +2404,7 @@ test("settings sliders use normalized percentages and refined dark defaults", as
     ["gap", 0],
     ["corner-rounding", 100],
     ["heading-font-size", 100],
-    ["heading-padding", 100],
+    ["cell-padding", 100],
     ["cell-font-size", 0],
     ["heading-font-weight", 0],
     ["cell-font-weight", 100],
@@ -2258,7 +2427,7 @@ test("settings sliders use normalized percentages and refined dark defaults", as
     gap: 0,
     cornerRadius: 25,
     headingFontSize: 36,
-    headingPadding: 60,
+    cellPadding: 120,
     cellFontSize: 6,
     headingFontWeight: 100,
     cellFontWeight: 900,
@@ -2269,8 +2438,8 @@ test("settings sliders use normalized percentages and refined dark defaults", as
   await expect(page.locator("#canvas-padding")).toHaveValue("100");
   await openDesignControls(page, "cell-font-size");
   await expect(page.locator("#cell-font-size")).toHaveValue("0");
-  await openDesignControls(page, "heading-padding");
-  await expect(page.locator("#heading-padding")).toHaveValue("100");
+  await openDesignControls(page, "cell-padding");
+  await expect(page.locator("#cell-padding")).toHaveValue("100");
   await page.locator("#export-grid-header").click();
   await selectField(page, "format", "image/jpeg");
   const quality = page.locator("#quality");
@@ -2283,6 +2452,131 @@ test("settings sliders use normalized percentages and refined dark defaults", as
   expect((await savedWorkspace(page)).exportSettings.quality).toBe(50);
   await quality.fill("100");
   expect((await savedWorkspace(page)).exportSettings.quality).toBe(100);
+});
+
+test("text alignment has three stops and card padding matches preview export and reload", async ({
+  page,
+}, testInfo) => {
+  await page.goto("./");
+  await uploadCellImage(page);
+  await editHeading(page, "Align Canvas");
+  await page.locator(".cell-heading").first().fill("Align Card");
+  await expect(page.locator("#heading-padding")).toHaveCount(0);
+  for (const id of ["heading-text-alignment", "cell-text-alignment"]) {
+    await openDesignControls(page, id);
+    const slider = page.locator(`#${id}`);
+    await expect(slider).toHaveAttribute("min", "0");
+    await expect(slider).toHaveAttribute("max", "2");
+    await expect(slider).toHaveAttribute("step", "1");
+    await expect(slider).toHaveValue("1");
+    await expect(slider).toHaveAttribute("aria-valuetext", "Center");
+    await expect(slider.locator("..").locator("output")).toHaveText("Center");
+    await slider.press("ArrowLeft");
+    await expect(slider).toHaveValue("0");
+    await slider.press("ArrowRight");
+    await expect(slider).toHaveValue("1");
+  }
+  await selectExportField(page, "resolution", "150");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.evaluate(() => {
+    window.__alignmentDraws = [];
+    const native = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (
+      text,
+      left,
+      top,
+      ...rest
+    ) {
+      window.__alignmentDraws.push({
+        text,
+        left,
+        top,
+        alignment: this.textAlign,
+      });
+      return native.call(this, text, left, top, ...rest);
+    };
+  });
+  const headingPositions = [];
+  const cardPositions = [];
+  for (const [index, alignment] of ["left", "center", "right"].entries()) {
+    for (const id of ["heading-text-alignment", "cell-text-alignment"]) {
+      await openDesignControls(page, id);
+      await page.locator(`#${id}`).fill(String(index));
+    }
+    await expect(page.locator(".board-export-heading button")).toHaveCSS(
+      "text-align",
+      alignment,
+    );
+    await expect(
+      page.locator(".grid-cell [data-caption-preview]").first(),
+    ).toHaveCSS("text-align", alignment);
+    await expect(page.locator(".cell-heading").first()).toHaveCSS(
+      "text-align",
+      alignment,
+    );
+    await page.evaluate(() => {
+      window.__alignmentDraws = [];
+    });
+    await downloadBoard(page);
+    const draws = await page.evaluate(() => window.__alignmentDraws);
+    const heading = draws.find((draw) => draw.text === "ALIGN CANVAS");
+    const card = draws.find((draw) => draw.text === "Align Card");
+    expect(heading).toBeDefined();
+    expect(card).toBeDefined();
+    expect(heading.alignment).toBe(alignment);
+    expect(card.alignment).toBe(alignment);
+    headingPositions.push(heading.left);
+    cardPositions.push(card.left);
+  }
+  expect(headingPositions[0]).toBeLessThan(headingPositions[1]);
+  expect(headingPositions[1]).toBeLessThan(headingPositions[2]);
+  expect(cardPositions[0]).toBeLessThan(cardPositions[1]);
+  expect(cardPositions[1]).toBeLessThan(cardPositions[2]);
+  await openDesignControls(page, "cell-padding");
+  await page.locator("#cell-padding").fill("50");
+  expect((await savedWorkspace(page)).grid).toMatchObject({
+    headingTextAlignment: "right",
+    cellTextAlignment: "right",
+    cellPadding: 60,
+  });
+  const caption = page.locator(".cell-heading").first();
+  await expect
+    .poll(() =>
+      caption.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return parseFloat(getComputedStyle(element).paddingLeft) / bounds.width;
+      }),
+    )
+    .toBeCloseTo(0.1, 3);
+  await page.evaluate(() => {
+    window.__alignmentDraws = [];
+  });
+  await downloadBoard(page);
+  const paddedPosition = await page.evaluate(
+    () =>
+      window.__alignmentDraws.find((draw) => draw.text === "Align Card").left,
+  );
+  expect(paddedPosition).toBeCloseTo(cardPositions[2] - 6, 2);
+  await reloadWorkspace(page);
+  for (const id of ["heading-text-alignment", "cell-text-alignment"]) {
+    await openDesignControls(page, id);
+    await expect(page.locator(`#${id}`)).toHaveValue("2");
+    await expect(
+      page.locator(`#${id}`).locator("..").locator("output"),
+    ).toHaveText("Right");
+  }
+  await openDesignControls(page, "cell-padding");
+  await expect(page.locator("#cell-padding")).toHaveValue("50");
+  await setEditorViewport(page, { width: 260, height: 844 });
+  await openDesignControls(page, "cell-text-alignment");
+  await page.locator("#cell-text-alignment").scrollIntoViewIfNeeded();
+  await expect(page.locator("#cell-text-alignment")).toBeInViewport({
+    ratio: 1,
+  });
+  await page.screenshot({
+    path: testInfo.outputPath("text-alignment-mobile.png"),
+  });
 });
 
 test("corner rounding is shared by headings, cards, pickers and exports", async ({
@@ -2330,15 +2624,13 @@ test("corner rounding is shared by headings, cards, pickers and exports", async 
       .getByRole("group", { name: "Card style", exact: true })
       .locator("#corner-rounding"),
   ).toHaveCount(0);
-  for (const [id, value] of [
-    ["background-value", "#17191b"],
-    ["heading-background-color-value", "#ed1d24"],
-    ["cell-background-color-value", "#0085c7"],
-  ]) {
-    await openDesignControls(page, id);
-    await page.locator(`#${id}`).fill(value);
-    await page.locator(`#${id}`).press("Tab");
-  }
+  await openDesignControls(page, "background");
+  await page.locator("#background").fill("#17191b");
+  const legacyColors = await savedWorkspace(page);
+  legacyColors.grid.headingBackgroundColor = "#ed1d24";
+  legacyColors.grid.cellBackgroundColor = "#0085c7";
+  await localDatabase(page, "write", legacyColors);
+  await reloadWorkspace(page);
   for (const radius of [12, 0]) {
     await openDesignControls(page, "corner-rounding");
     await rounding.fill(String(radius * 4));
@@ -2451,6 +2743,17 @@ test("appearance choices support keyboard selection on narrow and desktop screen
       exact: true,
     });
     await expect(shapes.getByRole("radio")).toHaveCount(3);
+    const shapeBounds = await Promise.all(
+      (await shapes.getByRole("radio").all()).map((button) =>
+        button.boundingBox(),
+      ),
+    );
+    expect(
+      Math.max(...shapeBounds.map((bounds) => bounds.width)) -
+        Math.min(...shapeBounds.map((bounds) => bounds.width)),
+    ).toBeLessThanOrEqual(1.1);
+    for (const bounds of shapeBounds)
+      expect(bounds.y).toBeCloseTo(shapeBounds[0].y, 1);
     await expect(page.locator("#theme-step-1 #image-shape")).toHaveCount(1);
     await expect(
       page
@@ -2459,6 +2762,25 @@ test("appearance choices support keyboard selection on narrow and desktop screen
     ).toHaveCount(0);
     await openDesignSection(page, "Card headings");
     await expect(headings.getByRole("radio")).toHaveCount(4);
+    for (const option of await headings.getByRole("radio").all()) {
+      const spacing = await option.evaluate((button) => {
+        const icon = button.querySelector("svg").getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(button.querySelector("span"));
+        return {
+          expected: parseFloat(getComputedStyle(button).columnGap),
+          lines: [...range.getClientRects()].map(
+            (rect) => rect.left - icon.right,
+          ),
+        };
+      });
+      expect(spacing.lines.length).toBeGreaterThan(0);
+      for (const gap of spacing.lines)
+        expect(gap).toBeCloseTo(spacing.expected, 1);
+    }
+    await headings.screenshot({
+      path: testInfo.outputPath(`caption-option-spacing-${width}.png`),
+    });
     await openDesignSection(page, "Layout");
     await expect(
       page.getByRole("toolbar", { name: "Grid appearance" }),
@@ -2544,10 +2866,9 @@ test("header actions open export and restore sidebar settings and focus", async 
     header.getByRole("button", { name: "Menu", exact: true }),
   ).toHaveCount(0);
   await openSidebarPanel(page, "Design");
-  await openDesignControls(page, "background-value");
-  await page.locator("#background-value").fill("#112233");
-  await openDesignControls(page, "background-value");
-  await page.locator("#background-value").press("Enter");
+  await openDesignControls(page, "background");
+  await page.locator("#background").fill("#112233");
+  await openDesignControls(page, "background");
   const exportButton = header.getByRole("button", {
     name: "Export grid",
     exact: true,
@@ -2615,8 +2936,8 @@ test("header actions open export and restore sidebar settings and focus", async 
     await expect(
       sidebar.getByRole("tab", { name: "Design", exact: true }),
     ).toBeDisabled();
-    await openDesignControls(page, "background-value");
-    await expect(page.locator("#background-value")).toHaveValue("#112233");
+    await openDesignControls(page, "background");
+    await expect(page.locator("#background")).toHaveValue("#112233");
     await page.screenshot({
       path: testInfo.outputPath(`panel-open-${width}.png`),
     });
@@ -2697,10 +3018,9 @@ test("sidebar keyboard navigation skips selected tabs and preserves settings acr
     path: testInfo.outputPath("sidebar-command-tiles.png"),
   });
   await settings.click();
-  await openDesignControls(page, "background-value");
-  await page.locator("#background-value").fill("#112233");
-  await openDesignControls(page, "background-value");
-  await page.locator("#background-value").press("Enter");
+  await openDesignControls(page, "background");
+  await page.locator("#background").fill("#112233");
+  await openDesignControls(page, "background");
   await closeSidebar.click();
   await expect(sidebar).toHaveCount(0);
   const canvasHeader = page.locator("[data-canvas-header]");
@@ -2719,8 +3039,8 @@ test("sidebar keyboard navigation skips selected tabs and preserves settings acr
   await expect(sidebar).toBeVisible();
   await expect(canvasHeader).toBeVisible();
   await expect(settings).toHaveJSProperty("disabled", true);
-  await openDesignControls(page, "background-value");
-  await expect(page.locator("#background-value")).toHaveValue("#112233");
+  await openDesignControls(page, "background");
+  await expect(page.locator("#background")).toHaveValue("#112233");
   await closeSidebar.click();
 });
 
@@ -2781,7 +3101,7 @@ test("right sidebar switches local images and settings without a provider picker
   await expect(images).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#sidebar-image-source")).toHaveCount(0);
   await expect(page.locator("#asset-library")).toBeVisible();
-  await expect(page.locator("#background-value")).toBeHidden();
+  await expect(page.locator("#background")).toBeHidden();
 
   await page.locator("#upload").setInputFiles({
     name: "panel-image.svg",
@@ -2798,17 +3118,16 @@ test("right sidebar switches local images and settings without a provider picker
   await expect(sidebar.locator(".asset")).toBeVisible();
   await settings.click();
   await expect(page.locator("#asset-library")).toBeHidden();
-  await openDesignControls(page, "background-value");
-  await page.locator("#background-value").fill("#112233");
-  await openDesignControls(page, "background-value");
-  await page.locator("#background-value").press("Enter");
+  await openDesignControls(page, "background");
+  await page.locator("#background").fill("#112233");
+  await openDesignControls(page, "background");
   await images.click();
   await expect(sidebar.locator(".asset")).toBeVisible();
   await settings.press("Enter");
   await expect(settings).toHaveAttribute("aria-selected", "true");
-  await openDesignControls(page, "background-value");
-  await expect(page.locator("#background-value")).toHaveValue("#112233");
-  await openDesignSection(page, "Card headings", true);
+  await openDesignControls(page, "background");
+  await expect(page.locator("#background")).toHaveValue("#112233");
+  await openDesignSection(page, "Card headings");
   const content = sidebar.locator("[data-sidebar-panels]");
   await content.evaluate((el) => {
     el.scrollTop = el.scrollHeight;
@@ -2837,8 +3156,8 @@ test("right sidebar switches local images and settings without a provider picker
   await setEditorViewport(page, { width: 390, height: 844 });
   await expect(sidebar).toHaveCount(1);
   await settings.click();
-  await openDesignControls(page, "background-value");
-  await expect(page.locator("#background-value")).toHaveValue("#112233");
+  await openDesignControls(page, "background");
+  await expect(page.locator("#background")).toHaveValue("#112233");
 });
 
 test("window resizing reuses card content and canvas measurement contexts", async ({
@@ -3128,20 +3447,7 @@ test("controls share quarter-strength background hover without changing borders"
     await expect(toggle).toHaveCSS("box-shadow", "none");
     expect(await geometryOf(toggle)).toEqual(toggleGeometry);
     await toggle.click();
-    const customize = page.locator("#theme-step-1 [data-customize-toggle]");
-    const customizeGeometry = await geometryOf(customize);
-    await expect(customize).toHaveCSS("border-top-style", "solid");
-    await expect(customize).toHaveCSS(
-      "border-top-width",
-      await spacing.evaluate(
-        (element) => getComputedStyle(element).borderTopWidth,
-      ),
-    );
-    await expect(customize).toHaveCSS("border-top-color", borderColor);
-    await customize.hover();
-    await expect(customize).toHaveCSS("background-color", hoverColor);
-    await expect(customize).toHaveCSS("border-top-color", borderColor);
-    expect(await geometryOf(customize)).toEqual(customizeGeometry);
+    await expect(page.locator("[data-customize-toggle]")).toHaveCount(0);
     await openDesignSection(page, "Colors");
     const palette = page
       .locator('[data-theme-builder] [role="radio"][aria-checked="false"]')
@@ -3155,8 +3461,7 @@ test("controls share quarter-strength background hover without changing borders"
       await hoverColorOf(palette, "--panel"),
     );
     await expect(palette).toHaveCSS("border-top-color", paletteBorder);
-    await page.locator("[data-theme-builder] [data-customize-toggle]").click();
-    for (const selector of ['input[type="color"]', 'input[type="text"]']) {
+    for (const selector of ['input[type="color"]']) {
       const input = page.locator(`[data-theme-builder] ${selector}`).first();
       await page.mouse.move(0, 0);
       const colorBorder = await input
@@ -3576,12 +3881,58 @@ test("card border controls preserve geometry and export matching enabled and dis
   });
   await expect(borders).not.toBeChecked();
   await expect(page.locator("[data-card-border]")).toHaveCount(0);
+  await step("Colors");
+  const borderColor = page.locator("#theme-step-0 #card-border-color");
+  await expect(borderColor).toBeVisible();
+  await expect(
+    page.locator("#heading-background-color, #cell-background-color"),
+  ).toHaveCount(0);
+  for (const name of [
+    "Ink",
+    "Forest",
+    "Ocean",
+    "Plum",
+    "Rose",
+    "Cocoa",
+    "Sun",
+    "Snow",
+  ]) {
+    const choice = builder.getByRole("radio", { name, exact: true });
+    if (!(await choice.isDisabled())) await choice.click();
+    const textColor = await page.locator("#cell-text-color").inputValue();
+    await expect(borderColor).toHaveValue(textColor);
+    await expect
+      .poll(async () => {
+        const grid = (await localDatabase(page)).document.grid;
+        return {
+          ...grid,
+          cardBorderColor: grid.cardBorderColor ?? grid.cellTextColor,
+          cardBorderVisible: grid.cardBorderVisible === true,
+        };
+      })
+      .toMatchObject({
+        colorTheme: name,
+        cardBorderColor: textColor,
+        cardBorderVisible: false,
+        headingVisible: false,
+      });
+  }
+  await borderColor.fill("#123456");
+  await expect(builder.getByRole("button", { name: /1 Colors/ })).toContainText(
+    "Modified",
+  );
+  await builder.getByRole("radio", { name: "Snow", exact: true }).click();
+  await expect(borderColor).toHaveValue("#202325");
+  await builder.getByRole("radio", { name: "Ink", exact: true }).click();
+  await step("Layout");
   const first = page.locator(".grid-cell").first();
   const geometry = await first.boundingBox();
   const content = await first.locator("[data-card-content]").boundingBox();
   await borders.click();
-  await page.locator("#card-border-color-value").fill("#e34567");
-  await page.locator("#card-border-color-value").press("Tab");
+  await step("Colors");
+  await page.locator("#card-border-color").fill("#e34567");
+  await page.locator("#card-border-color").press("Tab");
+  await step("Layout");
   await page.locator("#card-border-width").fill("80");
   await expect
     .poll(async () => (await localDatabase(page)).document.grid)
@@ -3642,9 +3993,10 @@ test("card border controls preserve geometry and export matching enabled and dis
   expect(await exportPixels()).toEqual(Array(4).fill([227, 69, 103, 255]));
   await step("Layout");
   await borders.click();
-  await expect(
-    page.locator("#card-border-width, #card-border-color"),
-  ).toHaveCount(0);
+  await expect(page.locator("#card-border-width")).toHaveCount(0);
+  await step("Colors");
+  await expect(borderColor).toBeVisible();
+  await expect(borderColor).toHaveValue("#e34567");
   await expect(page.locator("[data-card-border]")).toHaveCount(0);
   expect(await first.boundingBox()).toEqual(geometry);
   await first.locator("[data-card-image]").hover();
@@ -3669,8 +4021,9 @@ test("card border controls preserve geometry and export matching enabled and dis
   await step("Layout");
   await expect(borders).not.toBeChecked();
   await borders.click();
-  await expect(page.locator("#card-border-color-value")).toHaveValue("#E34567");
   await expect(page.locator("#card-border-width")).toHaveValue("80");
+  await step("Colors");
+  await expect(borderColor).toHaveValue("#e34567");
   await expect
     .poll(
       async () => (await localDatabase(page)).document.grid.cardBorderVisible,
@@ -3685,6 +4038,22 @@ test("card border controls preserve geometry and export matching enabled and dis
   expect(saved.grid.cells).toEqual(original.grid.cells);
   expect(saved.grid.overflow).toEqual(original.grid.overflow);
   expect(saved.assets).toEqual(original.assets);
+  await step("Colors");
+  await builder.getByRole("radio", { name: "Cocoa", exact: true }).click();
+  const legacy = await savedWorkspace(page);
+  delete legacy.grid.cardBorderColor;
+  await localDatabase(page, "write", legacy);
+  await reloadWorkspace(page);
+  await step("Colors");
+  await expect(borderColor).toHaveValue("#fff0df");
+  await expect(first.locator("[data-card-border]")).toHaveCSS(
+    "border-top-color",
+    "rgb(255, 240, 223)",
+  );
+  await page.locator("#theme-step-0 [data-design-customize]").screenshot({
+    path: testInfo.outputPath("card-border-colors-desktop.png"),
+  });
+  expect(await exportPixels()).toEqual(Array(4).fill([255, 240, 223, 255]));
 });
 
 touchTest(
@@ -3700,9 +4069,9 @@ touchTest(
     });
     for (const width of [390, 260]) {
       await setEditorViewport(page, { width, height: 844 });
+      await openDesignSection(page, "Layout");
       await borders.click();
       await page.locator("#card-border-width").fill("100");
-      await expect(page.locator("#card-border-color-value")).toBeVisible();
       await page.locator("#card-border-width").scrollIntoViewIfNeeded();
       await expect(page.locator("#card-border-width")).toBeInViewport({
         ratio: 1,
@@ -3717,6 +4086,15 @@ touchTest(
       });
       await borders.click();
       await expect(page.locator("[data-card-border]")).toHaveCount(0);
+      await openDesignSection(page, "Colors");
+      await expect(page.locator("#card-border-color")).toBeVisible();
+      await page.locator("#card-border-color").scrollIntoViewIfNeeded();
+      await expect(page.locator("#card-border-color")).toBeInViewport({
+        ratio: 1,
+      });
+      await page.screenshot({
+        path: testInfo.outputPath(`card-border-colors-mobile-${width}.png`),
+      });
       await expect(
         page.locator('input:not([type="range"]):focus, textarea:focus'),
       ).toHaveCount(0);
@@ -4146,11 +4524,7 @@ test("design identifies reset and modified color themes across navigation and re
     );
     await expect(colors).toHaveText(`1Colors${name}`);
     if (name === "Rose") {
-      await builder
-        .getByRole("button", { name: "Customize Colors", exact: true })
-        .click();
-      const field = page.getByRole("textbox", {
-        name: "Background hex value",
+      const field = page.getByLabel("Canvas background color picker", {
         exact: true,
       });
       await field.click();
@@ -4240,25 +4614,11 @@ test("design identifies reset and modified color themes across navigation and re
   await openSidebarPanel(page, "Design");
   await expect(colors).toHaveText("1ColorsInk");
   await expect(ink).toBeChecked();
-  const customize = builder.locator("[data-customize-toggle]");
-  await expect(customize).toHaveText("Customize Colors");
-  const hierarchy = await customize.evaluate((element) => {
-    const parent = element.closest("fieldset");
-    const details = element.closest("[data-design-customize]");
-    return {
-      inset:
-        element.getBoundingClientRect().left -
-        parent.getBoundingClientRect().left,
-      rail: parseFloat(getComputedStyle(details).borderLeftWidth),
-      background: getComputedStyle(element).backgroundColor,
-    };
-  });
-  expect(hierarchy.inset).toBeGreaterThanOrEqual(14);
-  expect(hierarchy.rail).toBe(2);
-  expect(hierarchy.background).not.toBe("rgba(0, 0, 0, 0)");
-  await customize.click();
-  const background = page.getByRole("textbox", {
-    name: "Background hex value",
+  await expect(builder.locator("[data-customize-toggle]")).toHaveCount(0);
+  await expect(
+    builder.locator("[data-design-customize] #background"),
+  ).toBeVisible();
+  const background = page.getByLabel("Canvas background color picker", {
     exact: true,
   });
   await background.click();
@@ -4368,7 +4728,6 @@ test("theme builder composes independent choices and detailed values without rep
   await expect(builder.getByRole("button", { name: /2 Layout/ })).toBeFocused();
   await builder.getByRole("radio", { name: "Landscape", exact: true }).click();
   await selectField(page, "builder-spacing", "compact");
-  await builder.locator("[data-customize-toggle]").click();
   await page.locator("#gap").fill("25");
   const spacing = page.locator("#builder-spacing");
   for (const width of [1440, 390, 260]) {
@@ -4438,15 +4797,14 @@ test("theme builder composes independent choices and detailed values without rep
   ).toBeChecked();
   await openDesignSection(page, "Colors");
   await builder.getByRole("radio", { name: "Rose", exact: true }).click();
-  await builder.locator("[data-customize-toggle]").click();
   await page
-    .getByRole("textbox", { name: "Background hex value", exact: true })
+    .getByLabel("Canvas background color picker", { exact: true })
     .click();
   await page
-    .getByRole("textbox", { name: "Background hex value", exact: true })
+    .getByLabel("Canvas background color picker", { exact: true })
     .fill("#334455");
   await page
-    .getByRole("textbox", { name: "Background hex value", exact: true })
+    .getByLabel("Canvas background color picker", { exact: true })
     .press("Tab");
   await expect(
     builder.getByRole("button", { name: /1 Colors Rose · Modified/ }),
@@ -4507,17 +4865,11 @@ touchTest(
         await expect(builder.locator("fieldset[id^=theme-step-]")).toHaveCount(
           1,
         );
-        const customize = builder.locator("[data-customize-toggle]");
-        if (await customize.count()) {
-          await openDesignSection(page, title, true);
-          const inputs = builder.locator(
-            "[data-design-customize] input:visible",
-          );
-          if (await inputs.count()) {
-            await inputs.last().scrollIntoViewIfNeeded();
-            await expect(inputs.last()).toBeInViewport({ ratio: 1 });
-          }
-        }
+        await expect(builder.locator("[data-customize-toggle]")).toHaveCount(0);
+        const inputs = builder.locator("[data-design-customize] input:visible");
+        await expect(inputs.first()).toBeVisible();
+        await inputs.last().scrollIntoViewIfNeeded();
+        await expect(inputs.last()).toBeInViewport({ ratio: 1 });
         expect(
           await builder.evaluate(
             (element) => element.scrollWidth - element.clientWidth,
@@ -4547,13 +4899,12 @@ test("Design disclosures provide linked panels, keyboard toggles and reduced-mot
   await openSidebarPanel(page, "Design");
   const builder = page.locator("[data-theme-builder]");
   const colors = builder.getByRole("button", { name: /^1 Colors/ });
-  const customize = builder.getByRole("button", {
-    name: "Customize Colors",
-    exact: true,
-  });
+  await expect(builder.locator("[data-customize-toggle]")).toHaveCount(0);
+  await colors.press("Space");
+  await expect(colors).toHaveAttribute("aria-expanded", "false");
   for (const reducedMotion of ["no-preference", "reduce"]) {
     await page.emulateMedia({ reducedMotion });
-    await customize.evaluate((element) => {
+    await colors.evaluate((element) => {
       window.designAnimationFrames = [];
       let frames = 0;
       const sample = () => {
@@ -4570,10 +4921,10 @@ test("Design disclosures provide linked panels, keyboard toggles and reduced-mot
       };
       requestAnimationFrame(sample);
     });
-    await customize.press("Enter");
-    await expect(customize).toHaveAttribute("aria-expanded", "true");
-    await expect(customize).toHaveAttribute("aria-controls", /.+/);
-    const panelId = await customize.getAttribute("aria-controls");
+    await colors.press("Enter");
+    await expect(colors).toHaveAttribute("aria-expanded", "true");
+    await expect(colors).toHaveAttribute("aria-controls", /.+/);
+    const panelId = await colors.getAttribute("aria-controls");
     const panel = page.locator(`[id="${panelId}"]`);
     await expect(panel).toBeVisible();
     await expect(panel).toHaveCSS("opacity", "1");
@@ -4589,13 +4940,11 @@ test("Design disclosures provide linked panels, keyboard toggles and reduced-mot
         )
         .toBe(true);
     }
-    await customize.press("Space");
-    await expect(customize).toHaveAttribute("aria-expanded", "false");
+    await colors.press("Space");
+    await expect(colors).toHaveAttribute("aria-expanded", "false");
     await expect(panel).toHaveCount(0);
-    await expect(customize).toBeFocused();
+    await expect(colors).toBeFocused();
   }
-  await colors.press("Space");
-  await expect(colors).toHaveAttribute("aria-expanded", "false");
   await expect(builder.locator("fieldset[id^=theme-step-]")).toHaveCount(0);
   await colors.press("Enter");
   await expect(colors).toHaveAttribute("aria-expanded", "true");
@@ -4774,18 +5123,8 @@ test("opening Design accordions reveals their toggles and maximum content in the
       await expect.poll(chevronAngle).toBe(180);
       await expect(builder.locator("fieldset[id^=theme-step-]")).toHaveCount(1);
       await checkReveal(toggle);
-      const customize = builder.locator("[data-customize-toggle]");
-      if (await customize.count()) {
-        if ((await customize.getAttribute("aria-expanded")) === "true") {
-          await customize.click();
-        }
-        await customize.focus();
-        await customize.press("Enter");
-        await expect(
-          builder.locator('[data-customize-toggle][aria-expanded="true"]'),
-        ).toHaveCount(1);
-        await checkReveal(customize);
-      }
+      await expect(builder.locator("[data-customize-toggle]")).toHaveCount(0);
+      await expect(builder.locator("[data-design-customize]")).toBeVisible();
     }
     expect(
       await workspace.evaluate((element) => ({
@@ -4822,7 +5161,6 @@ test("reset tab confirms clearing the grid and all images at every screen size",
   await editHeading(page, "Reset this heading");
   await openSidebarPanel(page, "Design");
   await openDesignSection(page, "Layout");
-  await page.locator("#theme-step-1 [data-customize-toggle]").click();
   await page.locator("#gap").fill("20");
   await page.getByRole("button", { name: "Remove row", exact: true }).click();
   const before = await savedWorkspace(page);
@@ -5308,8 +5646,8 @@ test("heading and card typography controls are independent across previews, expo
   await selectField(page, "heading-font", "Bebas Neue");
   await openDesignControls(page, "heading-font-size");
   await page.locator("#heading-font-size").fill("80");
-  await openDesignControls(page, "heading-text-color-value");
-  const headingHex = page.locator("#heading-text-color-value");
+  await openDesignControls(page, "heading-text-color");
+  const headingHex = page.locator("#heading-text-color");
   await headingHex.fill("#cc4488");
   await headingHex.press("Tab");
   await expect(page.locator(".cell-heading").first()).toHaveCSS(
@@ -5319,8 +5657,8 @@ test("heading and card typography controls are independent across previews, expo
   await selectField(page, "cell-font", "Boogaloo");
   await openDesignControls(page, "cell-font-size");
   await page.locator("#cell-font-size").fill("60");
-  await openDesignControls(page, "cell-text-color-value");
-  const cardHex = page.locator("#cell-text-color-value");
+  await openDesignControls(page, "cell-text-color");
+  const cardHex = page.locator("#cell-text-color");
   await cardHex.fill("#39a36f");
   await cardHex.press("Tab");
   const verify = async () => {
@@ -5459,10 +5797,10 @@ test("empty headings use accessible inline placeholders and reserve no export ba
   await openDesignControls(page, "canvas-padding");
   await page.locator("#canvas-padding").fill("10");
   await selectField(page, "image-shape", "square");
-  await openDesignControls(page, "cell-text-color-value");
-  await page.locator("#cell-text-color-value").fill("#a6d8ff");
-  await openDesignControls(page, "cell-text-color-value");
-  await page.locator("#cell-text-color-value").press("Tab");
+  await openDesignControls(page, "cell-text-color");
+  await page.locator("#cell-text-color").fill("#a6d8ff");
+  await openDesignControls(page, "cell-text-color");
+  await page.locator("#cell-text-color").press("Tab");
   await page.locator("#upload").setInputFiles({
     name: "Original.svg",
     mimeType: "image/svg+xml",
@@ -5840,8 +6178,7 @@ test("canvas has no appearance toolbar and the sidebar header stays fixed", asyn
         ["Design", "[data-theme-builder]"],
       ]) {
         await openSidebarPanel(page, panel);
-        if (panel === "Design")
-          await openDesignControls(page, "background-value");
+        if (panel === "Design") await openDesignControls(page, "background");
         const before = await header.boundingBox();
         const scroller = sidebar.locator("[data-sidebar-panels]");
         expect(
@@ -6647,7 +6984,6 @@ test("captions share external bands and fit individual overlays across canvas, l
     .locator("[data-theme-builder]")
     .getByRole("button", { name: /2 Layout/ })
     .click();
-  await page.locator("#theme-step-1 [data-customize-toggle]").click();
   await page.locator("#gap").fill("10");
   await page.locator("#canvas-padding").fill("10");
   await selectField(page, "image-shape", "square");
@@ -7351,8 +7687,10 @@ test("independent spacing and canvas backgrounds match preview and export", asyn
   await page.locator("#corner-rounding").fill("0");
   await openDesignControls(page, "heading-font-size");
   await page.locator("#heading-font-size").fill("40");
-  await openDesignControls(page, "heading-padding");
-  await page.locator("#heading-padding").fill("0");
+  const legacyHeading = await savedWorkspace(page);
+  legacyHeading.grid.headingPadding = 0;
+  await localDatabase(page, "write", legacyHeading);
+  await reloadWorkspace(page);
   await openDesignControls(page, "cell-font-size");
   await page.locator("#cell-font-size").fill("17");
   const canvasStyle = page.getByRole("group", {
@@ -7368,8 +7706,8 @@ test("independent spacing and canvas backgrounds match preview and export", asyn
     canvasStyle.getByRole("slider", { name: "Gap", exact: true }),
   ).toHaveCount(1);
   await expect(page.locator("#heading-gap")).toHaveCount(0);
-  await openDesignControls(page, "background-value");
-  await expect(page.locator("#background-value")).toHaveValue(/^#17191b$/i);
+  await openDesignControls(page, "background");
+  await expect(page.locator("#background")).toHaveValue(/^#17191b$/i);
   await expect(page.locator("[data-image-canvas-background]")).toHaveCSS(
     "background-color",
     "rgb(23, 25, 27)",
@@ -7481,8 +7819,8 @@ test("independent spacing and canvas backgrounds match preview and export", asyn
     await expect(page.locator(`#${id}-value`)).toHaveText(`${value * 5}%`);
     await checkCanvasPadding();
   }
-  await openDesignControls(page, "background-value");
-  await page.locator("#background-value").fill("#d9e7f0");
+  await openDesignControls(page, "background");
+  await page.locator("#background").fill("#d9e7f0");
   await openDesignControls(page, "canvas-padding");
   await page.locator("#canvas-padding").fill("20");
   expected.padding = 4;
@@ -7498,18 +7836,19 @@ test("independent spacing and canvas backgrounds match preview and export", asyn
       }),
     )
     .toBeCloseTo(4, 1);
-  await openDesignControls(page, "heading-background-color-value");
-  await page.locator("#heading-background-color-value").fill("#114455");
-  await openDesignControls(page, "cell-background-color-value");
-  await page.locator("#cell-background-color-value").fill("#335577");
+  const legacyColors = await savedWorkspace(page);
+  legacyColors.grid.headingBackgroundColor = "#114455";
+  legacyColors.grid.cellBackgroundColor = "#335577";
+  await localDatabase(page, "write", legacyColors);
+  await reloadWorkspace(page);
   const cardStyle = page.getByRole("group", {
     name: "Card style",
     exact: true,
   });
-  await openDesignControls(page, "caption-overlay-value");
-  await expect(cardStyle.locator("#caption-overlay-value")).toBeVisible();
+  await openDesignControls(page, "caption-overlay");
+  await expect(cardStyle.locator("#caption-overlay")).toBeVisible();
   await expect(cardStyle.locator("#caption-opacity")).toBeEnabled();
-  await cardStyle.locator("#caption-overlay-value").fill("#7700bb");
+  await cardStyle.locator("#caption-overlay").fill("#7700bb");
   await cardStyle.locator("#caption-opacity").fill("35");
   await page.mouse.move(0, 0);
 
@@ -7624,8 +7963,8 @@ test("independent spacing and canvas backgrounds match preview and export", asyn
     captionOverlayColor: "#7700bb",
     captionOverlayOpacity: 35,
   });
-  await openDesignControls(page, "background-value");
-  await expect(page.locator("#background-value")).toHaveValue(/^#d9e7f0$/i);
+  await openDesignControls(page, "background");
+  await expect(page.locator("#background")).toHaveValue(/^#d9e7f0$/i);
   await expect(page.locator("[data-image-canvas-background]")).toHaveCSS(
     "background-color",
     "rgb(217, 231, 240)",
@@ -7672,14 +8011,14 @@ test("independent spacing and canvas backgrounds match preview and export", asyn
     ),
   ).toBe(true);
   await openDesignControls(page, "caption-opacity");
-  await expect(cardStyle.locator("#caption-overlay-value")).toBeVisible();
+  await expect(cardStyle.locator("#caption-overlay")).toBeVisible();
   await expect(cardStyle.locator("#caption-opacity")).toBeEnabled();
   expect(
     await page.evaluate(() =>
       document.activeElement?.matches("input,textarea"),
     ),
   ).toBe(false);
-  await cardStyle.locator("#caption-overlay-value").scrollIntoViewIfNeeded();
+  await cardStyle.locator("#caption-overlay").scrollIntoViewIfNeeded();
   await page.screenshot({
     path: testInfo.outputPath("canvas-card-style-mobile.png"),
   });
@@ -7819,15 +8158,12 @@ test("appearance settings preserve content and match exported ratios and caption
         expect(await pixels(imageHeight, placement)).toEqual([35, 39, 43, 255]);
         continue;
       }
-      await openDesignControls(page, "caption-overlay-value");
+      await openDesignControls(page, "caption-overlay");
       await expect(
-        page.getByRole("textbox", {
-          name: "Overlay color hex value",
-          exact: true,
-        }),
+        page.getByLabel("Overlay color color picker", { exact: true }),
       ).not.toBeFocused();
       await page
-        .getByRole("textbox", { name: "Overlay color hex value", exact: true })
+        .getByLabel("Overlay color color picker", { exact: true })
         .fill("#00ff00");
       await openDesignControls(page, "caption-opacity");
       await page.locator("#caption-opacity").fill("50");
@@ -7948,7 +8284,7 @@ test("appearance settings preserve content and match exported ratios and caption
         }),
       ),
     ).toBe(true);
-    await openDesignControls(page, "caption-overlay-value");
+    await openDesignControls(page, "caption-overlay");
   }
   await setEditorViewport(page, { width: 390, height: 844 });
   expect(
@@ -7957,10 +8293,7 @@ test("appearance settings preserve content and match exported ratios and caption
     ),
   ).toBe(true);
   await showSidebar(page);
-  const color = page.getByRole("textbox", {
-    name: "Overlay color hex value",
-    exact: true,
-  });
+  const color = page.getByLabel("Overlay color color picker", { exact: true });
   await expect(color).toBeVisible();
   await expect(color).not.toBeFocused();
   await openSidebarPanel(page, "Design");
@@ -7995,7 +8328,233 @@ test("appearance settings preserve content and match exported ratios and caption
   await page.screenshot({ path: testInfo.outputPath("appearance-mobile.png") });
 });
 
-test("editable hex color and Headless UI settings dropdowns synchronize and persist", async ({
+test("narrow design controls keep equal shape choices and two full-width color columns", async ({
+  page,
+}, testInfo) => {
+  await page.goto("./");
+  await uploadCellImage(page);
+  for (const width of [1440, 390, 260]) {
+    await setEditorViewport(page, { width, height: 1000 });
+    await openDesignControls(page, "background");
+    const customize = page.locator("#theme-step-0 [data-design-customize]");
+    await expect(page.locator("[data-customize-toggle]")).toHaveCount(0);
+    await expect(customize).toBeVisible();
+    await expect(customize).toHaveCSS("padding-left", "0px");
+    await expect(customize).toHaveCSS("border-left-width", "0px");
+    const colors = [];
+    let columnWidth;
+    for (const [name, labels] of [
+      ["Canvas", ["Background", "Heading text"]],
+      ["Card", ["Text", "Border"]],
+    ]) {
+      const group = customize.getByRole("group", { name, exact: true });
+      await expect(group).toBeVisible();
+      await expect(
+        group.getByRole("heading", { name, exact: true }),
+      ).toBeVisible();
+      const grid = group.locator(":scope > div");
+      await expect(grid).toHaveCSS("display", "grid");
+      await expect(grid.locator(":scope > div")).toHaveCount(2);
+      await expect(grid.locator("label")).toHaveText(labels);
+      const fields = await grid.locator('input[type="color"]').all();
+      colors.push(...fields);
+      const [firstBounds, secondBounds] = await Promise.all(
+        fields.map((field) => field.locator("../../..").boundingBox()),
+      );
+      expect(secondBounds.y).toBeCloseTo(firstBounds.y, 1);
+      expect(secondBounds.width).toBeCloseTo(firstBounds.width, 1);
+      expect(secondBounds.x).toBeGreaterThan(firstBounds.x + firstBounds.width);
+      const groupBounds = await grid.boundingBox();
+      expect(firstBounds.width).toBeCloseTo((groupBounds.width - 8) / 2, 1);
+      if (columnWidth !== undefined)
+        expect(firstBounds.width).toBeCloseTo(columnWidth, 1);
+      columnWidth = firstBounds.width;
+    }
+    expect(colors).toHaveLength(4);
+    await expect(
+      page.locator("#heading-background-color, #cell-background-color"),
+    ).toHaveCount(0);
+    const background = page.locator("#background");
+    const text = page.locator("#heading-text-color");
+    await expect(customize.locator('input[type="text"]')).toHaveCount(
+      await customize.locator('input[type="color"]').count(),
+    );
+    for (const field of colors) {
+      await expect(field).toHaveCSS("height", "44px");
+      await expect(field).toHaveAttribute("type", "color");
+      await expect(field).toHaveCSS("padding", "0px");
+      expect(
+        await field.evaluate((element) => ({
+          inset: getComputedStyle(element, "::-webkit-color-swatch-wrapper")
+            .padding,
+          border: getComputedStyle(element, "::-webkit-color-swatch")
+            .borderTopWidth,
+        })),
+      ).toEqual({ inset: "0px", border: "0px" });
+      const swatch = field.locator("..");
+      await expect(swatch).toHaveCSS("border-right-width", "1px");
+      await expect(swatch).toHaveCSS("border-right-style", "solid");
+      const tint = swatch.locator("span");
+      await page.mouse.move(0, 0);
+      await expect(tint).toHaveCSS("opacity", "0");
+      const selectedColor = await field.inputValue();
+      await field.hover();
+      await expect(tint).toHaveCSS("opacity", "1");
+      await expect(tint).toHaveCSS("pointer-events", "none");
+      expect(
+        await tint.evaluate(
+          (element) => getComputedStyle(element).backgroundColor,
+        ),
+      ).not.toBe("rgba(0, 0, 0, 0)");
+      await expect(field).toHaveValue(selectedColor);
+      await expect(swatch).toHaveCSS("border-right-width", "1px");
+      const hex = field.locator("../..").locator('input[type="text"]');
+      await expect(hex).toHaveCSS("height", "44px");
+      await expect(hex).toHaveCSS("text-align", "center");
+      const frameBounds = await field.locator("../..").boundingBox();
+      if (frameBounds.width > 120) {
+        await expect(hex).toHaveCSS("padding-left", "10px");
+        await expect(hex).toHaveCSS("padding-right", "10px");
+      }
+      expect(
+        await hex.evaluate((element) => {
+          const style = getComputedStyle(element);
+          const context = document.createElement("canvas").getContext("2d");
+          context.font = style.font;
+          return (
+            context.measureText(element.value).width <=
+            element.clientWidth -
+              parseFloat(style.paddingLeft) -
+              parseFloat(style.paddingRight)
+          );
+        }),
+      ).toBe(true);
+      const labelBounds = await field
+        .locator("../../..")
+        .locator("label")
+        .boundingBox();
+      const controlBounds = await field.locator("../..").boundingBox();
+      expect(controlBounds.y - labelBounds.y - labelBounds.height).toBeCloseTo(
+        2,
+        1,
+      );
+    }
+    await background.fill("#112233");
+    await expect(background).toHaveValue("#112233");
+    const generated = (await savedWorkspace(page)).grid;
+    expect(generated.headingBackgroundColor).toBe("#112233");
+    expect(generated.cellBackgroundColor).toMatch(/^#[a-f0-9]{6}$/);
+    expect(generated.cellBackgroundColor).not.toBe(generated.background);
+    await expect(page.locator(".board-export-heading")).toHaveCSS(
+      "background-color",
+      "rgb(17, 34, 51)",
+    );
+    const channels = [1, 3, 5].map((index) =>
+      parseInt(generated.cellBackgroundColor.slice(index, index + 2), 16),
+    );
+    await expect(
+      page.locator(".grid-cell:not([data-drop-placeholder])").first(),
+    ).toHaveCSS("background-color", `rgb(${channels.join(", ")})`);
+    await text.fill("#aabbcc");
+    await expect(page.locator("#heading-text-color")).toHaveValue("#aabbcc");
+    await page.screenshot({
+      path: testInfo.outputPath(`compact-colors-${width}.png`),
+    });
+    for (const [firstId, secondId] of [
+      ["canvas-padding", "gap"],
+      ["heading-font-weight", "heading-font-size"],
+      ["cell-font-weight", "cell-font-size"],
+    ]) {
+      await openDesignControls(page, firstId);
+      const first = page.locator(`#${firstId}`).locator("..");
+      const second = page.locator(`#${secondId}`).locator("..");
+      const firstBounds = await first.boundingBox();
+      const secondBounds = await second.boundingBox();
+      expect(secondBounds.x).toBeGreaterThan(firstBounds.x + firstBounds.width);
+      expect(secondBounds.y).toBeCloseTo(firstBounds.y, 1);
+      expect(secondBounds.width).toBeCloseTo(firstBounds.width, 1);
+      for (const id of [firstId, secondId]) {
+        await expect(page.locator(`#${id}`).locator("..")).toHaveCSS(
+          "row-gap",
+          "2px",
+        );
+        const label = page.locator(`label[for="${id}"]`);
+        const labelText = await label.locator("span").boundingBox();
+        const output = await label.locator("output").boundingBox();
+        expect(labelText.x + labelText.width).toBeLessThanOrEqual(
+          output.x + 0.1,
+        );
+        if (firstBounds.width <= 120) {
+          const sliderBounds = await page.locator(`#${id}`).boundingBox();
+          expect(labelText.y + labelText.height).toBeCloseTo(
+            sliderBounds.y - 2,
+            1,
+          );
+          expect(output.y + output.height).toBeCloseTo(sliderBounds.y - 2, 1);
+        }
+      }
+    }
+    const weightBounds = await page
+      .locator("#cell-font-weight")
+      .locator("..")
+      .boundingBox();
+    const sizeBounds = await page
+      .locator("#cell-font-size")
+      .locator("..")
+      .boundingBox();
+    const overlayBounds = await page
+      .locator("#caption-overlay")
+      .locator("../../..")
+      .boundingBox();
+    const opacityBounds = await page
+      .locator("#caption-opacity")
+      .locator("..")
+      .boundingBox();
+    expect(overlayBounds.x).toBeCloseTo(weightBounds.x, 1);
+    expect(opacityBounds.x).toBeCloseTo(sizeBounds.x, 1);
+    expect(opacityBounds.y).toBeCloseTo(overlayBounds.y, 1);
+    expect(overlayBounds.y).toBeGreaterThan(
+      weightBounds.y + weightBounds.height,
+    );
+    const colorLabel = page.locator('label[for="caption-overlay"]');
+    const colorText = await colorLabel.evaluate((label) => {
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      return range.getBoundingClientRect().bottom;
+    });
+    const opacityLabel = await page
+      .locator('label[for="caption-opacity"]')
+      .boundingBox();
+    const colorLabelBounds = await colorLabel.boundingBox();
+    const colorControlBounds = await page
+      .locator("#caption-overlay")
+      .locator("../..")
+      .boundingBox();
+    const opacityControlBounds = await page
+      .locator("#caption-opacity")
+      .boundingBox();
+    expect(
+      colorControlBounds.y - colorLabelBounds.y - colorLabelBounds.height,
+    ).toBeCloseTo(2, 1);
+    expect(
+      opacityControlBounds.y - opacityLabel.y - opacityLabel.height,
+    ).toBeCloseTo(2, 1);
+    expect(colorLabelBounds.y + colorLabelBounds.height).toBeCloseTo(
+      opacityLabel.y + opacityLabel.height,
+      1,
+    );
+    if (overlayBounds.width <= 120)
+      expect(colorText).toBeCloseTo(
+        colorLabelBounds.y + colorLabelBounds.height,
+        1,
+      );
+    await page.screenshot({
+      path: testInfo.outputPath(`compact-card-style-${width}.png`),
+    });
+  }
+});
+
+test("native color controls and Headless UI settings dropdowns synchronize and persist", async ({
   page,
 }, testInfo) => {
   await page.goto("./");
@@ -8009,13 +8568,75 @@ test("editable hex color and Headless UI settings dropdowns synchronize and pers
     name: "Canvas style",
     exact: true,
   });
-  const hex = page.getByRole("textbox", {
-    name: "Background hex value",
+  const picker = page.getByLabel("Canvas background color picker", {
     exact: true,
   });
-  const picker = page.getByLabel("Background color picker", {
-    exact: true,
-  });
+  const hex = page.getByLabel("Canvas background hex value", { exact: true });
+  const expectJoinedDropdown = async (id) => {
+    const trigger = page.locator(`#${id}`);
+    const menu = page.getByRole("listbox");
+    await expect(trigger).toHaveCSS("padding-left", "16px");
+    await expect(trigger).toHaveCSS("padding-right", "16px");
+    await expect(menu).toHaveCSS("padding", "4px");
+    await expect(async () => {
+      const triggerBounds = await trigger.boundingBox();
+      const menuBounds = await menu.boundingBox();
+      const opensUp = (await menu.getAttribute("data-anchor"))?.startsWith(
+        "top",
+      );
+      expect(menuBounds.x).toBeCloseTo(triggerBounds.x, 1);
+      expect(menuBounds.width).toBeCloseTo(triggerBounds.width, 1);
+      if (opensUp) {
+        expect(menuBounds.y + menuBounds.height).toBeCloseTo(
+          triggerBounds.y,
+          1,
+        );
+      } else {
+        expect(menuBounds.y).toBeCloseTo(
+          triggerBounds.y + triggerBounds.height,
+          1,
+        );
+      }
+    }).toPass({ timeout: 5000 });
+    const opensUp = (await menu.getAttribute("data-anchor"))?.startsWith("top");
+    const triggerEdge = opensUp ? "top" : "bottom";
+    const menuEdge = opensUp ? "bottom" : "top";
+    const outerTriggerEdge = opensUp ? "bottom" : "top";
+    await expect(trigger).toHaveCSS(`border-${triggerEdge}-left-radius`, "0px");
+    await expect(trigger).toHaveCSS(
+      `border-${triggerEdge}-right-radius`,
+      "0px",
+    );
+    await expect(trigger).toHaveCSS(
+      `border-${outerTriggerEdge}-left-radius`,
+      "4px",
+    );
+    await expect(menu).toHaveCSS(`border-${menuEdge}-left-radius`, "0px");
+    await expect(menu).toHaveCSS(`border-${menuEdge}-right-radius`, "0px");
+    await expect(menu).toHaveCSS(`border-${menuEdge}-width`, "0px");
+    for (const option of await menu.getByRole("option").all()) {
+      await expect(option).toHaveCSS("padding-left", "16px");
+      await expect(option).toHaveCSS("padding-right", "16px");
+      expect(
+        await option.evaluate((element) => {
+          const parent = element.parentElement;
+          const menuBounds = parent.getBoundingClientRect();
+          const optionBounds = element.getBoundingClientRect();
+          const style = getComputedStyle(parent);
+          return {
+            left:
+              optionBounds.left -
+              menuBounds.left -
+              parseFloat(style.borderLeftWidth),
+            right:
+              menuBounds.right -
+              optionBounds.right -
+              parseFloat(style.borderRightWidth),
+          };
+        }),
+      ).toEqual({ left: 4, right: 4 });
+    }
+  };
   for (const id of ["heading-font", "cell-font"]) {
     await openDesignControls(page, id);
     await page.locator(`label[for="${id}"]`).hover();
@@ -8033,16 +8654,29 @@ test("editable hex color and Headless UI settings dropdowns synchronize and pers
     });
     await page.locator(`#${id}`).press("ArrowDown");
     await expect(page.getByRole("listbox")).toBeVisible();
+    await expectJoinedDropdown(id);
+    await page.screenshot({
+      path: testInfo.outputPath(`joined-${id}.png`),
+    });
     await page.getByRole("listbox").press("Escape");
     await expect(page.getByRole("listbox")).toHaveCount(0);
+    await expect(page.locator(`#${id}`)).toHaveCSS(
+      "border-bottom-left-radius",
+      "4px",
+    );
+    await expect(page.locator(`#${id}`)).toHaveCSS(
+      "border-top-left-radius",
+      "4px",
+    );
   }
-  await openDesignControls(page, "background-value");
-  await page.locator('label[for="background-value"]').hover();
-
-  await page.locator('label[for="background-value"]').click();
-  await expect(hex).toBeFocused();
-  await hex.blur();
-  for (const field of [picker, hex]) {
+  await openDesignControls(page, "background");
+  await expect(page.locator('label[for="background"]')).toHaveText(
+    "Background",
+  );
+  await picker.focus();
+  await expect(picker).toBeFocused();
+  await picker.blur();
+  for (const field of [picker]) {
     await page.mouse.move(0, 0);
 
     const value = await field.inputValue();
@@ -8053,24 +8687,24 @@ test("editable hex color and Headless UI settings dropdowns synchronize and pers
     expect(await field.boundingBox()).toEqual(before);
   }
   const pickerBox = await picker.boundingBox();
-  expect(pickerBox.width).toBeGreaterThanOrEqual(64);
+  expect(pickerBox.width).toBeGreaterThanOrEqual(44);
   expect(pickerBox.height).toBeGreaterThanOrEqual(44);
-  expect((await hex.boundingBox()).height).toBeGreaterThanOrEqual(44);
-
-  await hex.click();
-  await expect(hex).toBeFocused();
-  await hex.fill("112233");
+  await picker.fill("#112233");
+  await expect(picker).toHaveValue("#112233");
+  await expect(hex).toHaveValue("#112233");
+  await hex.fill("a6d8ff");
   await hex.press("Enter");
-  await expect(hex).toHaveValue("#112233");
-  await expect(picker).toHaveValue("#112233");
+  await expect(picker).toHaveValue("#a6d8ff");
+  await expect(hex).toHaveValue("#A6D8FF");
   await hex.fill("#zzzzzz");
-  await expect(picker).toHaveValue("#112233");
+  await expect(picker).toHaveValue("#a6d8ff");
   await hex.press("Tab");
-  await expect(hex).toHaveValue("#112233");
+  await expect(hex).toHaveValue("#A6D8FF");
   await hex.fill("#12");
   await hex.press("Escape");
-  await expect(hex).toHaveValue("#112233");
+  await expect(hex).toHaveValue("#A6D8FF");
   await picker.fill("#aabbcc");
+  await expect(picker).toHaveValue("#aabbcc");
   await expect(hex).toHaveValue("#AABBCC");
   await openDesignControls(page, "heading-font");
   await page.locator("#heading-font").click();
@@ -8119,8 +8753,8 @@ test("editable hex color and Headless UI settings dropdowns synchronize and pers
     .poll(async () => (await localDatabase(page)).document?.exportSettings)
     .toMatchObject({ format: "image/webp", resolution: 300 });
   await reloadWorkspace(page);
-  await openDesignControls(page, "background-value");
-  await expect(hex).toHaveValue("#AABBCC");
+  await openDesignControls(page, "background");
+  await expect(picker).toHaveValue("#aabbcc");
   await openDesignControls(page, "heading-font");
   await expect(page.locator("#heading-font")).toHaveText("Manrope");
   await openDesignControls(page, "cell-font");
@@ -8129,6 +8763,11 @@ test("editable hex color and Headless UI settings dropdowns synchronize and pers
   await showSidebar(page);
   await openDesignControls(page, "heading-font");
   await page.locator("#heading-font").click();
+  await expectJoinedDropdown("heading-font");
+  await expect(page.getByRole("listbox")).toHaveAttribute(
+    "data-anchor",
+    /^top/,
+  );
   await expect(async () => {
     const menuBox = await page.getByRole("listbox").boundingBox();
     expect(menuBox.x).toBeGreaterThanOrEqual(0);
@@ -10197,8 +10836,8 @@ test("grid headings and font choices persist and export correctly", async ({
   await editHeading(page, "Team Superheroes");
   await selectField(page, "heading-font", "Boogaloo");
   await selectField(page, "cell-font", "Bangers");
-  await openDesignControls(page, "heading-background-color-value");
-  await page.locator("#heading-background-color-value").fill("#ed1d24");
+  await openDesignControls(page, "background");
+  await page.locator("#background").fill("#ed1d24");
 
   await expect(page.locator(".board-export-heading img")).toHaveCount(0);
   await expect(page.locator(".board-export-heading")).toHaveText(
@@ -10260,10 +10899,10 @@ test("canvas heading can be disabled without losing text or style", async ({
   await useComicExample(page);
   await openSidebarPanel(page, "Design");
   await selectField(page, "heading-font", "Boogaloo");
-  await openDesignControls(page, "heading-text-color-value");
-  await page.locator("#heading-text-color-value").fill("#123456");
-  await openDesignControls(page, "heading-text-color-value");
-  await page.locator("#heading-text-color-value").press("Tab");
+  await openDesignControls(page, "heading-text-color");
+  await page.locator("#heading-text-color").fill("#123456");
+  await openDesignControls(page, "heading-text-color");
+  await page.locator("#heading-text-color").press("Tab");
   for (const width of [1440, 390]) {
     await setEditorViewport(page, { width, height: 900 });
     await openSidebarPanel(page, "Design");
@@ -10318,10 +10957,8 @@ test("canvas heading can be disabled without losing text or style", async ({
     await expect(page.locator(".board-export-heading")).toHaveText("Team DC");
     await openDesignControls(page, "heading-font");
     await expect(page.locator("#heading-font")).toHaveText("Boogaloo");
-    await openDesignControls(page, "heading-text-color-value");
-    await expect(page.locator("#heading-text-color-value")).toHaveValue(
-      "#123456",
-    );
+    await openDesignControls(page, "heading-text-color");
+    await expect(page.locator("#heading-text-color")).toHaveValue("#123456");
   }
 });
 
@@ -10482,11 +11119,7 @@ test("selective reset checkboxes keep unselected data with one reset action", as
   await openSidebarPanel(page, "Design");
   await openDesignSection(page, "Colors");
   await page.getByRole("radio", { name: "Rose", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Customize Colors", exact: true })
-    .click();
-  const background = page.getByRole("textbox", {
-    name: "Background hex value",
+  const background = page.getByLabel("Canvas background color picker", {
     exact: true,
   });
   await background.click();
@@ -10729,7 +11362,6 @@ test("guest reset clears images and removed placements and restores default sett
     .locator("[data-theme-builder]")
     .getByRole("button", { name: /2 Layout/ })
     .click();
-  await page.locator("#theme-step-1 [data-customize-toggle]").click();
   await page.locator("#gap").fill("25");
   await selectExportField(page, "format", "image/webp");
   await selectField(page, "resolution", "300");
@@ -10917,11 +11549,10 @@ test("long title overlays reach the bottom and titles can be hidden without losi
   await setEditorViewport(page, { width: 1440, height: 1080 });
   await selectField(page, "caption-position", "below");
   await openSidebarPanel(page, "Design");
-  await openDesignSection(page, "Card headings", true);
+  await openDesignSection(page, "Card headings");
   const toggle = page.getByRole("switch", { name: "Show titles", exact: true });
   await expect(toggle).toBeChecked();
-  const titleColor = page.getByRole("textbox", {
-    name: "Overlay color hex value",
+  const titleColor = page.getByLabel("Overlay color color picker", {
     exact: true,
   });
   const titleOpacity = page.getByRole("slider", { name: /^Overlay opacity/ });
@@ -10995,7 +11626,7 @@ test("long title overlays reach the bottom and titles can be hidden without losi
   await downloadBoard(page);
   expect(await page.evaluate(() => window.titleDrawing)).toEqual([]);
   await toggle.click();
-  await openDesignSection(page, "Card headings", true);
+  await openDesignSection(page, "Card headings");
   await expect(cardSettings.locator("#cell-font-size")).toHaveValue("20");
   await expect(titleColor).toHaveValue("#123456");
   await expect(titleOpacity).toHaveValue("37");

@@ -9,7 +9,7 @@ export function CardBorder({ style }: { style: GridStyle }) {
       data-card-border
       className="pointer-events-none absolute inset-0 z-45 rounded-[inherit] border-solid"
       style={{
-        borderColor: style.cardBorderColor ?? "#eef1f3",
+        borderColor: style.cardBorderColor ?? style.cellTextColor ?? "#eef1f3",
         borderWidth: `${style.cardBorderWidth ?? 0.5}cqw`,
       }}
     />

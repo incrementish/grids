@@ -10,7 +10,6 @@ export function UploadTile({
   progress,
   gridStyle,
   captionRows,
-  squareOnShelf = false,
   className = "self-start w-full",
   onClick,
   onDropFiles,
@@ -19,7 +18,6 @@ export function UploadTile({
   progress: { completed: number; total: number } | null;
   gridStyle: GridStyle;
   captionRows: number;
-  squareOnShelf?: boolean;
   className?: string;
   onClick: () => void;
   onDropFiles: (files: FileList) => void;
@@ -34,7 +32,7 @@ export function UploadTile({
   const [hovered, setHovered] = useState(false);
   return (
     <div
-      className={`min-w-0 panel-bottom:shrink-0 ${squareOnShelf ? "panel-bottom:aspect-square!" : ""} ${className}`}
+      className={`w-(--library-card-width,120px)! h-auto! shrink-0 self-start! ${className}`}
       style={{ aspectRatio: `600 / ${geometry.height}` }}
     >
       <button
@@ -44,12 +42,11 @@ export function UploadTile({
         aria-label={t("common.actions.addImages", { count: 2 })}
         disabled={progress !== null}
         title={t("common.actions.addOrDropImages", { count: 2 })}
-        className={`image-card @container relative size-full border-0! p-0! text-ui-muted outline-none! [--card-frame-color:transparent] data-image-hovered:[--card-frame-color:var(--card-frame-hover-color)] focus-visible:[--card-frame-color:var(--card-frame-hover-color)] disabled:cursor-default! disabled:opacity-100! ${squareOnShelf ? "panel-bottom:aspect-square! panel-bottom:rounded-(--upload-corner-radius)!" : ""}`}
+        className="image-card @container relative block size-full border-0! p-0! text-ui-muted outline-none! [--card-frame-color:transparent] data-image-hovered:[--card-frame-color:var(--card-frame-hover-color)] focus-visible:[--card-frame-color:var(--card-frame-hover-color)] disabled:cursor-default! disabled:opacity-100!"
         style={
           {
             aspectRatio: `600 / ${geometry.height}`,
             "--card-radius": `${gridStyle.cornerRadius ?? 12.5}cqw`,
-            "--upload-corner-radius": `${gridStyle.cornerRadius ?? 12.5}%`,
             "--card-background": cardBackground,
             "--card-frame-hover-color": contrastingColor(
               cardBackground,

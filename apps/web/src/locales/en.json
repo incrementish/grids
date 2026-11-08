@@ -24,7 +24,7 @@
     "airy": "Spacious",
     "rounded": "Rounded corners",
     "borders": "Show borders",
-    "borderColor": "Border color",
+    "borderColor": "Card border",
     "borderThickness": "Border thickness",
     "typography": "Typography",
     "customize": "Customize",
@@ -32,7 +32,16 @@
     "headingBackground": "Heading background",
     "headingText": "Heading text",
     "cardBackground": "Card background",
-    "cardText": "Card text"
+    "cardText": "Card text",
+    "colorGroups": {
+      "canvas": "Canvas",
+      "card": "Card"
+    },
+    "colorFields": {
+      "background": "Background",
+      "text": "Text",
+      "border": "Border"
+    }
   },
   "presets": {
     "title": "Design",
@@ -349,12 +358,16 @@
     "heading": "Canvas heading style",
     "card": "Card style",
     "fields": {
-      "background": "Background",
+      "background": "Canvas background",
       "padding": "Padding",
       "gap": "Gap",
       "font": "Font",
       "fontWeight": "Font weight",
       "fontSize": "Font size",
+      "textAlignment": "Text align",
+      "alignLeft": "Left",
+      "alignCenter": "Center",
+      "alignRight": "Right",
       "textColor": "Text color",
       "overlayColor": "Overlay color",
       "overlayOpacity": "Overlay opacity",

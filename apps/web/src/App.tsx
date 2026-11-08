@@ -20,6 +20,7 @@ import {
   ColorField,
   PercentField,
   RangeField,
+  TextAlignmentField,
   SelectField,
 } from "./components/ui/controls";
 import { Modal } from "./components/ui/Modal";
@@ -32,7 +33,7 @@ import {
   type CardDragSource,
   type CardDragVisual,
 } from "./components/GridCell";
-import { EditorLayout } from "./components/EditorLayout";
+import { EditorLayout, useCompactPanel } from "./components/EditorLayout";
 import { FontWeightField, ThemeBuilder } from "./components/PresetsPanel";
 import { contrastingColor } from "./canvasTheme";
 import {
@@ -70,7 +71,7 @@ import { LocalWorkspaceStore, LocalWorkspaceConflictError } from "./storage";
 import { useEditorState } from "./browser/navigation";
 
 const pickerGridClassName =
-  "grid grid-cols-[repeat(auto-fill,minmax(min(100%,var(--picker-card-min-width)),1fr))] gap-2.5 *:max-w-(--picker-card-max-width)";
+  "grid grid-cols-[repeat(auto-fill,var(--library-card-width,120px))] gap-2.5";
 
 function BoardHeading({
   board,
@@ -171,7 +172,7 @@ function BoardHeading({
             color: "inherit",
             background: "transparent",
             border: 0,
-            textAlign: "center",
+            textAlign: board.headingTextAlignment ?? "center",
             width: "100%",
             padding: "var(--heading-padding)",
           }}
@@ -179,6 +180,15 @@ function BoardHeading({
       ) : (
         <button
           className={`${fieldClass} overflow-hidden p-(--heading-padding)!`}
+          style={{
+            textAlign: board.headingTextAlignment ?? "center",
+            justifyContent:
+              board.headingTextAlignment === "left"
+                ? "flex-start"
+                : board.headingTextAlignment === "right"
+                  ? "flex-end"
+                  : "center",
+          }}
           aria-label={t("editor.editHeading", {
             value1: board.heading.trim()
               ? board.heading
@@ -209,6 +219,7 @@ function BoardHeading({
 }
 
 export default function App() {
+  const compactPanel = useCompactPanel();
   const [workspace, dispatchDocument] = useReducer(
     documentReducer,
     undefined,
@@ -769,9 +780,17 @@ export default function App() {
       </main>
     );
   }
+  const libraryCardWidth = compactPanel
+    ? (120 * 600) / cellGeometry(board, 600, captionRows).height
+    : 120;
   return (
     <>
-      <main className="app-layout relative h-dvh! min-h-0! min-w-0 grid-rows-[auto_minmax(0,1fr)]! transition-[grid-template-columns] duration-(--ui-motion-layout,180ms) ease-in-out motion-reduce:transition-none panel-right:grid! panel-right:grid-cols-[minmax(0,1fr)_0px]! panel-right:has-data-sidebar-open:grid-cols-[minmax(0,1fr)_350px]! panel-bottom:flex! panel-bottom:flex-col!">
+      <main
+        style={
+          { "--library-card-width": `${libraryCardWidth}px` } as CSSProperties
+        }
+        className="app-layout relative h-dvh! min-h-0! min-w-0 grid-rows-[auto_minmax(0,1fr)]! transition-[grid-template-columns] duration-(--ui-motion-layout,180ms) ease-in-out motion-reduce:transition-none panel-right:grid! panel-right:grid-cols-[minmax(0,1fr)_0px]! panel-right:has-data-sidebar-open:grid-cols-[minmax(0,1fr)_275px]! panel-bottom:flex! panel-bottom:flex-col!"
+      >
         <EditorLayout
           canvasControls={
             <RangeField
@@ -836,7 +855,7 @@ export default function App() {
         >
           {() => (
             <aside
-              className={`asset-panel p-0! panel-right:sticky panel-right:top-0 panel-right:h-dvh panel-right:self-start panel-right:overflow-hidden panel-right:[&_.asset-library]:grid-cols-2! ${libraryDragOver ? "outline-2 -outline-offset-2 outline-ui-success" : ""}`}
+              className={`asset-panel p-0! panel-right:sticky panel-right:top-0 panel-right:h-dvh panel-right:self-start panel-right:overflow-hidden panel-right:[&_.asset-library]:grid-cols-[repeat(auto-fill,var(--library-card-width,120px))]! ${libraryDragOver ? "outline-2 -outline-offset-2 outline-ui-success" : ""}`}
               aria-label={t("library.dropZone")}
               aria-busy={importProgress !== null}
               onDragOver={(event) => {
@@ -878,15 +897,13 @@ export default function App() {
                 <div
                   id="asset-library"
                   data-overlay-scroll="x"
-                  className="asset-library @container/shelf panel-right:overflow-visible! panel-bottom:h-(--shelf-content-height) panel-bottom:grid-flow-col panel-bottom:grid-rows-[minmax(0,1fr)] panel-bottom:auto-cols-max panel-bottom:grid-cols-none! panel-bottom:overflow-x-auto panel-bottom:overflow-y-hidden panel-bottom:-m-3! panel-bottom:p-3!"
+                  className="asset-library @container/shelf grid-cols-[repeat(auto-fill,var(--library-card-width,120px))]! panel-right:overflow-visible! panel-bottom:h-(--shelf-content-height) panel-bottom:grid-flow-col panel-bottom:grid-rows-[minmax(0,1fr)] panel-bottom:auto-cols-(--library-card-width,120px) panel-bottom:grid-cols-none! panel-bottom:overflow-x-auto panel-bottom:overflow-y-hidden panel-bottom:-m-3! panel-bottom:p-3!"
                 >
                   <UploadTile
                     ref={addImagesButton}
-                    squareOnShelf
                     progress={importProgress}
                     gridStyle={board}
                     captionRows={captionRows}
-                    className="self-start w-full panel-bottom:h-full panel-bottom:max-h-[100cqw] panel-bottom:w-auto panel-bottom:self-auto"
                     onClick={() => document.getElementById("upload")?.click()}
                     onDropFiles={(files) => {
                       setLibraryDragOver(false);
@@ -1077,51 +1094,86 @@ export default function App() {
                 patchBoard(patch);
               }}
             >
-              <div className="@container/settings flex min-w-0 flex-col gap-4">
-                <ColorField
-                  id="background"
-                  label={t("settings.fields.background")}
-                  value={board.background}
-                  onChange={(background) => patchBoard({ background })}
-                />
-                <div className="grid grid-cols-2 gap-4 @max-[260px]/settings:grid-cols-1">
-                  <ColorField
-                    id="heading-background-color"
-                    label={t("builder.headingBackground")}
-                    value={board.headingBackgroundColor ?? board.background}
-                    onChange={(headingBackgroundColor) =>
-                      patchBoard({ headingBackgroundColor })
-                    }
-                  />
-                  <ColorField
-                    id="heading-text-color"
-                    label={t("builder.headingText")}
-                    value={board.headingTextColor ?? palette.text}
-                    onChange={(headingTextColor) =>
-                      patchBoard({ headingTextColor })
-                    }
-                  />
-                  <ColorField
-                    id="cell-background-color"
-                    label={t("builder.cardBackground")}
-                    value={board.cellBackgroundColor ?? "#111315"}
-                    onChange={(cellBackgroundColor) =>
-                      patchBoard({ cellBackgroundColor })
-                    }
-                  />
-                  <ColorField
-                    id="cell-text-color"
-                    label={t("builder.cardText")}
-                    value={board.cellTextColor ?? "#f4f4ef"}
-                    onChange={(cellTextColor) => patchBoard({ cellTextColor })}
-                  />
-                </div>
+              <div className="flex min-w-0 flex-col gap-4">
+                <fieldset
+                  className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0"
+                  aria-labelledby="canvas-colors-label"
+                >
+                  <h3
+                    id="canvas-colors-label"
+                    className="m-0 text-xs font-semibold text-ui-text"
+                  >
+                    {t("builder.colorGroups.canvas")}
+                  </h3>
+                  <div className="@container/settings grid min-w-0 grid-cols-2 gap-2">
+                    <ColorField
+                      id="background"
+                      label={t("builder.colorFields.background")}
+                      accessibleLabel={t("settings.fields.background")}
+                      value={board.background}
+                      onChange={(background) =>
+                        patchBoard({
+                          background,
+                          headingBackgroundColor: background,
+                          cellBackgroundColor: contrastingColor(
+                            background,
+                            background,
+                            1.2,
+                          ),
+                        })
+                      }
+                    />
+                    <ColorField
+                      id="heading-text-color"
+                      label={t("builder.headingText")}
+                      value={board.headingTextColor ?? palette.text}
+                      onChange={(headingTextColor) =>
+                        patchBoard({ headingTextColor })
+                      }
+                    />
+                  </div>
+                </fieldset>
+                <fieldset
+                  className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0"
+                  aria-labelledby="card-colors-label"
+                >
+                  <h3
+                    id="card-colors-label"
+                    className="m-0 text-xs font-semibold text-ui-text"
+                  >
+                    {t("builder.colorGroups.card")}
+                  </h3>
+                  <div className="@container/settings grid min-w-0 grid-cols-2 gap-2">
+                    <ColorField
+                      id="cell-text-color"
+                      label={t("builder.colorFields.text")}
+                      accessibleLabel={t("builder.cardText")}
+                      value={board.cellTextColor ?? "#f4f4ef"}
+                      onChange={(cellTextColor) =>
+                        patchBoard({ cellTextColor })
+                      }
+                    />
+                    <ColorField
+                      id="card-border-color"
+                      label={t("builder.colorFields.border")}
+                      accessibleLabel={t("builder.borderColor")}
+                      value={
+                        board.cardBorderColor ??
+                        board.cellTextColor ??
+                        "#eef1f3"
+                      }
+                      onChange={(cardBorderColor) =>
+                        patchBoard({ cardBorderColor })
+                      }
+                    />
+                  </div>
+                </fieldset>
               </div>
               <fieldset
                 className="@container/settings m-0 flex min-w-0 flex-col gap-4 border-0 p-0"
                 aria-label={t("settings.canvas")}
               >
-                <div className="grid grid-cols-2 gap-4 @max-[260px]/settings:grid-cols-1">
+                <div className="grid grid-cols-2 gap-2">
                   <PercentField
                     id="canvas-padding"
                     label={t("settings.fields.padding")}
@@ -1153,7 +1205,7 @@ export default function App() {
               >
                 {board.headingVisible && (
                   <>
-                    <div className="grid grid-cols-2 gap-4 @max-[260px]/settings:grid-cols-1">
+                    <div className="grid grid-cols-2 gap-2">
                       <FontWeightField
                         id="heading-font-weight"
                         font={board.headingFont}
@@ -1173,13 +1225,11 @@ export default function App() {
                         }
                       />
                     </div>
-                    <PercentField
-                      id="heading-padding"
-                      label={t("settings.fields.padding")}
-                      max={60}
-                      value={board.headingPadding ?? 30}
-                      onChange={(headingPadding) =>
-                        patchBoard({ headingPadding })
+                    <TextAlignmentField
+                      id="heading-text-alignment"
+                      value={board.headingTextAlignment}
+                      onChange={(headingTextAlignment) =>
+                        patchBoard({ headingTextAlignment })
                       }
                     />
                   </>
@@ -1191,7 +1241,7 @@ export default function App() {
               >
                 {board.titlesVisible !== false && (
                   <>
-                    <div className="grid grid-cols-2 gap-4 @max-[260px]/settings:grid-cols-1">
+                    <div className="grid grid-cols-2 gap-2">
                       <FontWeightField
                         id="cell-font-weight"
                         font={board.cellFont}
@@ -1211,7 +1261,23 @@ export default function App() {
                         }
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-4 @max-[260px]/settings:grid-cols-1">
+                    <div className="grid grid-cols-2 gap-2">
+                      <TextAlignmentField
+                        id="cell-text-alignment"
+                        value={board.cellTextAlignment}
+                        onChange={(cellTextAlignment) =>
+                          patchBoard({ cellTextAlignment })
+                        }
+                      />
+                      <PercentField
+                        id="cell-padding"
+                        label={t("settings.fields.padding")}
+                        max={120}
+                        value={board.cellPadding ?? 36}
+                        onChange={(cellPadding) => patchBoard({ cellPadding })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
                       <ColorField
                         id="caption-overlay"
                         label={t("settings.fields.overlayColor")}
@@ -1369,13 +1435,15 @@ export default function App() {
         onClose={closeImagePicker}
         title={t("cell.actions.chooseImage")}
         returnFocus={imageReturnFocus}
-        size="wide"
+        size="picker"
+        pickerCardWidth={libraryCardWidth}
       >
         <div
           style={
             {
               "--picker-card-min-width": `${previewCardMinWidth}px`,
               "--picker-card-max-width": `${previewCardMaxWidth}px`,
+              "--library-card-width": `${libraryCardWidth}px`,
             } as CSSProperties
           }
         >

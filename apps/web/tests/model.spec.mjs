@@ -269,6 +269,12 @@ test("preset starters adapt to current layouts and sample previews stay separate
 });
 
 test("preset palettes theme headings, card surfaces and captions with readable colors", () => {
+  for (const palette of model.colorPalettes) {
+    const style = model.colorPaletteStyle(palette.name);
+    expect(style.cardBorderColor, palette.name).toBe(palette.text);
+    expect(style.cardBorderVisible, palette.name).toBeUndefined();
+    expect(style.cardBorderWidth, palette.name).toBeUndefined();
+  }
   const luminance = (color) =>
     [0.2126, 0.7152, 0.0722].reduce((sum, weight, index) => {
       const channel =
@@ -444,6 +450,44 @@ test("editor navigation migrates legacy URLs and restores browser-local history"
       .navigationUrl(all, new URL("https://example.com/"))
       .searchParams.get("topic"),
   ).toBeNull();
+});
+
+test("text alignment and card padding validate roundtrip and reset", () => {
+  const workspace = model.makeWorkspace();
+  const settings = model.getEditorSettings(workspace);
+  const customized = {
+    ...settings,
+    style: {
+      ...settings.style,
+      headingTextAlignment: "left",
+      cellTextAlignment: "right",
+      cellPadding: 48,
+    },
+  };
+  const applied = model.applyEditorSettings(workspace, customized);
+  expect(model.getEditorSettings(applied)).toEqual(customized);
+  expect(model.captionPadding(600, applied.grid.cellPadding)).toEqual({
+    horizontal: 48,
+    vertical: 40,
+  });
+  const reset = model.applyEditorSettings(applied, settings);
+  expect(reset.grid.headingTextAlignment).toBeUndefined();
+  expect(reset.grid.cellTextAlignment).toBeUndefined();
+  expect(reset.grid.cellPadding).toBeUndefined();
+  for (const patch of [
+    { headingTextAlignment: "middle" },
+    { cellTextAlignment: "top" },
+    { cellPadding: -1 },
+    { cellPadding: 121 },
+    { cellPadding: Infinity },
+  ]) {
+    expect(
+      model.editorSettingsSchema.safeParse({
+        ...settings,
+        style: { ...settings.style, ...patch },
+      }).success,
+    ).toBe(false);
+  }
 });
 
 test("card borders validate, roundtrip, disable without clearing values and reset", () => {

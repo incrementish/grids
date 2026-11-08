@@ -99,6 +99,7 @@ export function layoutCaption(
   sizePercent = 12,
   fontWeight = 400,
   maximumHeight = Infinity,
+  cellPadding = 36,
 ) {
   const fontSize = Math.min(
     (width * sizePercent) / 100,
@@ -113,7 +114,7 @@ export function layoutCaption(
     title,
     font,
     fontSize,
-    width - captionPadding(width).horizontal * 2,
+    width - captionPadding(width, cellPadding).horizontal * 2,
     fontWeight,
     maximumLines,
   );
@@ -186,6 +187,8 @@ export function sharedCaptionRows(
           600,
           item.cellFontSize,
           resolveFontWeight(item.cellFont, item.cellFontWeight),
+          Infinity,
+          item.cellPadding,
         ).lines.length,
     ),
   );
@@ -204,6 +207,7 @@ function drawTitle(
   padding = { horizontal: 0, vertical: 0 },
   caption = false,
   captionSizePercent = 12,
+  alignment: "left" | "center" | "right" = "center",
 ) {
   context.letterSpacing = "0.5px";
   const { fontSize, lines } = caption
@@ -215,6 +219,7 @@ function drawTitle(
         captionSizePercent,
         fontWeight,
         height - padding.vertical * 2,
+        (padding.horizontal * 600) / width,
       )
     : layoutText(
         context,
@@ -227,13 +232,17 @@ function drawTitle(
         "0.5px",
       );
   context.fillStyle = color;
-  context.textAlign = "center";
+  context.textAlign = alignment;
   context.textBaseline = "middle";
   const lineHeight = fontSize * 1.05;
   lines.forEach((line, lineIndex) =>
     context.fillText(
       line,
-      left + width / 2,
+      alignment === "left"
+        ? left + padding.horizontal
+        : alignment === "right"
+          ? left + width - padding.horizontal
+          : left + width / 2,
       top + height / 2 + (lineIndex - (lines.length - 1) / 2) * lineHeight,
     ),
   );
@@ -307,6 +316,10 @@ export async function createExport(
       bandHeight - headingPadding * 2,
       item.headingTextColor ?? publisher.text,
       resolveFontWeight(item.headingFont, item.headingFontWeight),
+      { horizontal: 0, vertical: 0 },
+      false,
+      12,
+      item.headingTextAlignment,
     );
     context.restore();
   }
@@ -330,6 +343,8 @@ export async function createExport(
               size,
               item.cellFontSize,
               resolveFontWeight(item.cellFont, item.cellFontWeight),
+              Infinity,
+              item.cellPadding,
             ).lines.length
           : captionRows
         : 0,
@@ -401,9 +416,10 @@ export async function createExport(
         geometry.captionHeight,
         item.cellTextColor ?? "#f4f4ef",
         resolveFontWeight(item.cellFont, item.cellFontWeight),
-        captionPadding(size),
+        captionPadding(size, item.cellPadding),
         true,
         item.cellFontSize,
+        item.cellTextAlignment,
       );
     }
     if (item.cardBorderVisible && (item.cardBorderWidth ?? 0.5) > 0) {
@@ -417,7 +433,8 @@ export async function createExport(
         Math.max(0, ((item.cornerRadius ?? 12.5) * size) / 100 - border / 2),
       );
       context.lineWidth = border;
-      context.strokeStyle = item.cardBorderColor ?? "#eef1f3";
+      context.strokeStyle =
+        item.cardBorderColor ?? item.cellTextColor ?? "#eef1f3";
       context.stroke();
     }
     context.restore();

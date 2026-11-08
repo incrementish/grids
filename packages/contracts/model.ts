@@ -241,6 +241,9 @@ export interface GridStyle {
   cellFontWeight?: number;
   headingFontSize?: number;
   headingPadding?: number;
+  headingTextAlignment?: "left" | "center" | "right";
+  cellTextAlignment?: "left" | "center" | "right";
+  cellPadding?: number;
   cellFontSize?: number;
   headingTextColor?: string;
   cellTextColor?: string;
@@ -290,7 +293,8 @@ export function cellGeometry(style: GridStyle, width: number, captionRows = 1) {
     const visibleRows = Math.max(
       1,
       Math.floor(
-        (maximumOverlayHeight - captionPadding(width).vertical * 2) /
+        (maximumOverlayHeight -
+          captionPadding(width, style.cellPadding).vertical * 2) /
           lineHeight,
       ),
     );
@@ -336,8 +340,11 @@ export function cellGeometry(style: GridStyle, width: number, captionRows = 1) {
       placement === "overlay" ? overlayHeight : imageHeight + captionHeight,
   };
 }
-export function captionPadding(width: number) {
-  return { horizontal: width * 0.06, vertical: width * 0.05 };
+export function captionPadding(width: number, padding = 36) {
+  return {
+    horizontal: width * (padding / 600),
+    vertical: width * (padding / 720),
+  };
 }
 export interface GridContent {
   id: string;
@@ -439,6 +446,7 @@ export function colorPaletteStyle(
         headingTextColor: palette.text,
         cellBackgroundColor: palette.surface,
         cellTextColor: palette.text,
+        cardBorderColor: palette.text,
         captionOverlayColor: palette.overlay,
       }
     : undefined;
@@ -611,6 +619,9 @@ const styleSchema = z.strictObject({
   cellFontWeight: z.number().int().min(100).max(900).multipleOf(100).optional(),
   headingFontSize: z.number().min(6).max(36).optional(),
   headingPadding: z.number().min(0).max(60).optional(),
+  headingTextAlignment: z.enum(["left", "center", "right"]).optional(),
+  cellTextAlignment: z.enum(["left", "center", "right"]).optional(),
+  cellPadding: z.number().min(0).max(120).optional(),
   cellFontSize: z.number().min(6).max(36).optional(),
   headingTextColor: z
     .string()
@@ -696,6 +707,15 @@ export function getEditorSettings(workspace: Workspace): EditorSettings {
       ...(grid.headingPadding !== undefined
         ? { headingPadding: grid.headingPadding }
         : {}),
+      ...(grid.headingTextAlignment !== undefined
+        ? { headingTextAlignment: grid.headingTextAlignment }
+        : {}),
+      ...(grid.cellTextAlignment !== undefined
+        ? { cellTextAlignment: grid.cellTextAlignment }
+        : {}),
+      ...(grid.cellPadding !== undefined
+        ? { cellPadding: grid.cellPadding }
+        : {}),
       ...(grid.cellFontSize !== undefined
         ? { cellFontSize: grid.cellFontSize }
         : {}),
@@ -768,6 +788,9 @@ function applyGridStyle(grid: Board, style: GridStyle): Board {
     captionOverlayOpacity: style.captionOverlayOpacity,
     headingFontSize: style.headingFontSize,
     headingPadding: style.headingPadding,
+    headingTextAlignment: style.headingTextAlignment,
+    cellTextAlignment: style.cellTextAlignment,
+    cellPadding: style.cellPadding,
     cellFontSize: style.cellFontSize,
     headingFontWeight: style.headingFontWeight,
     cellFontWeight: style.cellFontWeight,

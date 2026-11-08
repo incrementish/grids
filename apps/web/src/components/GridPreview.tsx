@@ -103,9 +103,7 @@ export function GridPreview({
       );
       const availableWidth = workspaceWidth + 12;
       const availableHeight = workspaceHeight + 12;
-      const imageHeight = 100 / (3 / 4);
-      const cellWidth =
-        ((imageHeight * 600) / cellGeometry(board, 600, 0).imageHeight) * zoom;
+      const cellWidth = 100 * zoom;
       let headingRows = 1;
       if (board.headingVisible) {
         for (; headingRows < 3; headingRows++) {
@@ -184,6 +182,7 @@ export function GridPreview({
     board.titlesVisible,
     board.captionAlignment,
     board.cellFontSize,
+    board.cellPadding,
     board.headingVisible,
     board.heading,
     board.headingFont,

@@ -28,7 +28,7 @@ export function LibraryImagePlaceholder({
       data-image-placeholder
       data-loading={loading}
       aria-hidden="true"
-      className={`min-w-0 w-full ${className}`}
+      className={`w-(--library-card-width,120px)! h-auto! shrink-0 self-start! ${className}`}
       style={{ aspectRatio: `600 / ${geometry.height}` }}
     >
       <div
@@ -68,7 +68,7 @@ export function LibraryImage({
   elementRef,
   onImageLoad,
   onImageError,
-  className = "panel-bottom:h-full panel-bottom:w-auto panel-bottom:shrink-0",
+  className = "",
 }: {
   asset: Asset;
   onDelete: () => void;
@@ -99,7 +99,7 @@ export function LibraryImage({
     <div
       ref={elementRef}
       data-library-image
-      className={`relative min-w-0 ${className}`}
+      className={`relative w-(--library-card-width,120px)! h-auto! shrink-0 self-start! ${className}`}
       style={{
         aspectRatio: `600 / ${cellGeometry(gridStyle, 600, captionRows).height}`,
       }}

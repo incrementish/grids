@@ -31,6 +31,14 @@ function subscribeToViewport(onChange: () => void) {
   return () => media.removeEventListener("change", onChange);
 }
 
+export function useCompactPanel() {
+  return useSyncExternalStore(
+    subscribeToViewport,
+    () => window.matchMedia(compactQuery).matches,
+    () => false,
+  );
+}
+
 export function EditorLayout({
   children,
   actions,
@@ -52,11 +60,7 @@ export function EditorLayout({
 }) {
   const { t } = useTranslation();
   const reduced = useReducedMotion();
-  const compact = useSyncExternalStore(
-    subscribeToViewport,
-    () => window.matchMedia(compactQuery).matches,
-    () => false,
-  );
+  const compact = useCompactPanel();
   const [sidebarOpen, setSidebarOpen] = useEditorState("sidebarOpen");
   const [selectedPanel, setSelectedPanel] = useEditorState("selectedPanel");
   useLayoutEffect(() => {
@@ -359,7 +363,7 @@ export function EditorLayout({
               className={
                 compact
                   ? "overflow-hidden"
-                  : "pointer-events-auto absolute inset-y-0 right-0 w-87.5"
+                  : "pointer-events-auto absolute inset-y-0 right-0 w-68.75"
               }
             >
               <aside

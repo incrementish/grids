@@ -433,6 +433,7 @@ export function GridCell({
     fontFamily: `"${gridStyle.cellFont}", sans-serif`,
     fontWeight: resolveFontWeight(gridStyle.cellFont, gridStyle.cellFontWeight),
     color: gridStyle.cellTextColor ?? "#f4f4ef",
+    textAlign: gridStyle.cellTextAlignment ?? "center",
     margin: 0,
     letterSpacing: 0,
   } as React.CSSProperties;
@@ -453,7 +454,7 @@ export function GridCell({
       const bounds = box
         ? { width: box.inlineSize, height: box.blockSize }
         : field.getBoundingClientRect();
-      const padding = captionPadding(bounds.width);
+      const padding = captionPadding(bounds.width, gridStyle.cellPadding);
       const fontSize = Math.min(
         (bounds.width * (gridStyle.cellFontSize ?? 12)) / 100,
         Math.max(0, (bounds.height - padding.vertical * 2) / 1.05),
@@ -499,6 +500,8 @@ export function GridCell({
               600,
               gridStyle.cellFontSize,
               resolveFontWeight(gridStyle.cellFont, gridStyle.cellFontWeight),
+              Infinity,
+              gridStyle.cellPadding,
             ).lines.length,
           ),
         );
@@ -523,6 +526,7 @@ export function GridCell({
     gridStyle.cellFont,
     gridStyle.cellFontSize,
     gridStyle.cellFontWeight,
+    gridStyle.cellPadding,
     geometry.height,
     geometry.captionTop,
     geometry.captionHeight,
@@ -1103,6 +1107,12 @@ export function GridCell({
               className={`${asset && gridStyle.titlesVisible !== false ? "" : "hidden!"} ${!cell.title ? "[&>span]:opacity-65 peer-hover/caption:[&>span]:opacity-85" : ""} pointer-events-none absolute inset-x-0 z-20 flex items-center justify-center overflow-hidden text-center peer-focus/caption:hidden`}
               style={{
                 ...captionStyle,
+                justifyContent:
+                  gridStyle.cellTextAlignment === "left"
+                    ? "flex-start"
+                    : gridStyle.cellTextAlignment === "right"
+                      ? "flex-end"
+                      : "center",
                 fontSize: "var(--library-caption-font-size)",
                 lineHeight: 1.05,
                 padding: "var(--library-caption-padding)",

@@ -81,7 +81,9 @@ export function RangeField({
     <output
       id={outputId}
       htmlFor={id}
-      className={layout === "inline" ? "w-12 shrink-0 text-right" : undefined}
+      className={
+        layout === "inline" ? "w-12 shrink-0 text-right" : "whitespace-nowrap"
+      }
     >
       {output}
     </output>
@@ -89,13 +91,24 @@ export function RangeField({
   return (
     <Field
       disabled={disabled}
-      className={rangeFieldStyles({ layout, className })}
+      className={rangeFieldStyles({
+        layout,
+        className: clsx(
+          "@container/range min-w-0",
+          layout === "stacked" && "in-data-design-customize:gap-0.5",
+          className,
+        ),
+      })}
     >
       <Label
         htmlFor={id}
-        className={layout === "inline" ? "shrink-0" : "field-label px-2"}
+        className={
+          layout === "inline"
+            ? "shrink-0"
+            : "field-label px-2 in-data-design-customize:@max-[120px]/range:grid in-data-design-customize:@max-[120px]/range:grid-cols-[minmax(0,1fr)_auto] in-data-design-customize:@max-[120px]/range:items-end! in-data-design-customize:@max-[120px]/range:gap-x-1 in-data-design-customize:@max-[120px]/range:min-h-8 in-data-design-customize:@max-[120px]/range:px-0"
+        }
       >
-        {label}
+        <span className="min-w-0 wrap-anywhere">{label}</span>
         {layout === "stacked" && <> {result}</>}
       </Label>
       <input
@@ -392,7 +405,7 @@ const radioGridStyles = cva("isolate grid gap-0 rounded-md bg-ui-background", {
   variants: {
     columns: {
       2: "grid-cols-2",
-      3: "grid-cols-3 @max-[260px]/radio:grid-cols-2",
+      3: "grid-cols-3",
     },
   },
 });
@@ -493,18 +506,16 @@ export function IconRadioField({
                 optionIndex === options.length - columns && "rounded-bl-md",
                 optionIndex === options.length - 1 && "rounded-br-md",
                 columns === 3 &&
-                  optionIndex === 0 &&
-                  "@max-[260px]/radio:rounded-bl-none",
-                columns === 3 &&
-                  optionIndex === 1 &&
-                  "@max-[260px]/radio:rounded-tr-md",
-                columns === 3 &&
-                  optionIndex === 2 &&
-                  "@max-[260px]/radio:col-span-2 @max-[260px]/radio:ml-0 @max-[260px]/radio:-mt-px @max-[260px]/radio:rounded-tr-none @max-[260px]/radio:rounded-bl-md",
+                  "@max-[260px]/radio:min-h-16 @max-[260px]/radio:flex-col",
               )}
             >
               {Icon && <Icon aria-hidden="true" className="size-4! shrink-0" />}
-              <span className="min-w-0 text-center text-xs leading-4 wrap-break-word">
+              <span
+                className={clsx(
+                  "min-w-0 text-xs leading-4 wrap-anywhere",
+                  columns === 3 ? "text-center" : "text-left",
+                )}
+              >
                 {optionLabel}
               </span>
             </Radio>
@@ -519,7 +530,10 @@ const selectTriggerStyles = cva(
   "flex min-h-11 w-full items-center justify-between gap-2 rounded-sm border border-solid border-ui-border bg-ui-background text-left enabled:data-hover:control-hover focus-visible:-outline-offset-3!",
   {
     variants: {
-      compact: { true: "h-11 px-2", false: "px-3" },
+      compact: {
+        true: "h-11 px-2",
+        false: "px-4",
+      },
       fontPreview: { true: "py-0", false: "" },
     },
     compoundVariants: [
@@ -530,12 +544,20 @@ const selectTriggerStyles = cva(
 );
 
 const popupStyles = cva(
-  "z-70 w-(--button-width) max-w-[calc(100vw-24px)] rounded-sm border border-solid border-ui-border bg-ui-panel p-1 [--anchor-gap:4px] [--anchor-padding:12px] transition-opacity duration-(--ui-motion-popup,140ms) data-closed:opacity-0 motion-reduce:transition-none",
-  { variants: { compact: { true: "min-w-42.5", false: "" } } },
+  "z-70 w-(--button-width) max-w-[calc(100vw-24px)] rounded-sm border border-solid border-ui-border bg-ui-panel p-1 [--anchor-padding:12px] transition-opacity duration-(--ui-motion-popup,140ms) data-closed:opacity-0 motion-reduce:transition-none",
+  {
+    variants: {
+      compact: {
+        true: "min-w-42.5 [--anchor-gap:4px]",
+        false:
+          "data-[anchor^=bottom]:rounded-t-none data-[anchor^=bottom]:border-t-0 data-[anchor^=top]:rounded-b-none data-[anchor^=top]:border-b-0 [--anchor-gap:0px]",
+      },
+    },
+  },
 );
 
 const selectOptionStyles = cva(
-  "flex min-h-11 w-full items-center gap-2 rounded-none border-0 bg-transparent text-left cursor-pointer px-3 wrap-break-word [--control-hover-base:var(--panel)] enabled:hover:control-hover enabled:data-focus:control-hover data-selected:bg-ui-selected data-selected:text-ui-accent data-disabled:cursor-default! data-disabled:opacity-50 data-disabled:data-selected:opacity-100!",
+  "flex min-h-11 w-full items-center gap-2 rounded-none border-0 bg-transparent text-left cursor-pointer px-4 wrap-break-word [--control-hover-base:var(--panel)] enabled:hover:control-hover enabled:data-focus:control-hover data-selected:bg-ui-selected data-selected:text-ui-accent data-disabled:cursor-default! data-disabled:opacity-50 data-disabled:data-selected:opacity-100!",
   {
     variants: {
       fontPreview: {
@@ -575,6 +597,21 @@ export function SelectField({
 }) {
   const selected = options.find((option) => option.value === value);
   const SelectedIcon = selected?.icon;
+  const [popup, setPopup] = useState<HTMLElement | null>(null);
+  const [opensUp, setOpensUp] = useState(false);
+  useEffect(() => {
+    if (!popup || compact) return;
+    const updateDirection = () => {
+      setOpensUp(popup.dataset.anchor?.startsWith("top") ?? false);
+    };
+    updateDirection();
+    const observer = new MutationObserver(updateDirection);
+    observer.observe(popup, {
+      attributes: true,
+      attributeFilter: ["data-anchor"],
+    });
+    return () => observer.disconnect();
+  }, [popup, compact]);
   return (
     <Listbox
       as={compact ? Fragment : "div"}
@@ -595,10 +632,11 @@ export function SelectField({
               })
             : undefined
         }
-        className={selectTriggerStyles({
-          compact,
-          fontPreview: largeFontPreview,
-        })}
+        className={clsx(
+          selectTriggerStyles({ compact, fontPreview: largeFontPreview }),
+          !compact &&
+            (opensUp ? "data-open:rounded-t-none" : "data-open:rounded-b-none"),
+        )}
       >
         {SelectedIcon && (
           <SelectedIcon aria-hidden="true" className="size-4.5 shrink-0" />
@@ -622,6 +660,7 @@ export function SelectField({
         <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
       </ListboxButton>
       <ListboxOptions
+        ref={setPopup}
         transition
         data-overlay-scroll="y"
         anchor="bottom"
@@ -659,14 +698,46 @@ export function SelectField({
   );
 }
 
+export function TextAlignmentField({
+  id,
+  value = "center",
+  onChange,
+}: {
+  id: string;
+  value?: "left" | "center" | "right";
+  onChange: (value: "left" | "center" | "right") => void;
+}) {
+  const choices = [
+    { value: "left", label: t("settings.fields.alignLeft") },
+    { value: "center", label: t("settings.fields.alignCenter") },
+    { value: "right", label: t("settings.fields.alignRight") },
+  ] as const;
+  const selected = choices.findIndex((choice) => choice.value === value);
+  return (
+    <RangeField
+      id={id}
+      label={t("settings.fields.textAlignment")}
+      min={0}
+      max={2}
+      step={1}
+      value={selected}
+      output={choices[selected].label}
+      valueText={choices[selected].label}
+      onChange={(index) => onChange(choices[index].value)}
+    />
+  );
+}
+
 export function ColorField({
   id,
   label,
+  accessibleLabel = label,
   value,
   onChange,
 }: {
   id: string;
   label: string;
+  accessibleLabel?: string;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -677,34 +748,49 @@ export function ColorField({
       ? `#${text.replace(/^#/, "").toLowerCase()}`
       : null;
   return (
-    <div className="@container/color flex min-w-0 flex-col gap-2">
-      <label className="field-label" htmlFor={`${id}-value`}>
+    <div className="@container/color flex min-w-0 flex-col gap-0.5">
+      <label
+        className="field-label @max-[120px]/color:min-h-8 @max-[120px]/color:items-end!"
+        htmlFor={id}
+      >
         {label}
       </label>
       <DataInteractive
         as="div"
-        className="flex w-full min-w-0 items-center rounded-sm border border-solid border-ui-border bg-ui-background focus-within:border-ui-accent transition-colors"
+        className="flex w-full min-w-0 items-center overflow-hidden rounded-sm border border-solid border-ui-border bg-ui-background focus-within:border-ui-accent transition-colors"
       >
         <DataInteractive
-          as="input"
-          id={id}
-          type="color"
-          value={value}
-          aria-label={t("common.fields.colorPicker", { value1: label })}
-          title={t("common.fields.colorPicker", { value1: label })}
-          className="h-11 w-11 shrink-0 cursor-pointer border-0 bg-transparent p-1 data-hover:control-hover transition-colors @min-[220px]/color:w-16"
-          onChange={(event) => onChange(event.target.value)}
-        />
+          as="div"
+          className="group/swatch relative box-content! h-11 w-11 shrink-0 overflow-hidden border-0 border-r border-solid border-ui-border"
+          style={{ "--control-hover-base": value } as CSSProperties}
+        >
+          <DataInteractive
+            as="input"
+            id={id}
+            type="color"
+            value={value}
+            aria-label={t("common.fields.colorPicker", {
+              value1: accessibleLabel,
+            })}
+            title={t("common.fields.colorPicker", { value1: accessibleLabel })}
+            className="h-full w-full cursor-pointer rounded-none! border-0 bg-transparent p-0! [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-0 [&::-moz-color-swatch]:border-0"
+            onChange={(event) => onChange(event.target.value)}
+          />
+          <span
+            aria-hidden="true"
+            className="control-hover pointer-events-none absolute inset-0 opacity-0 transition-opacity group-data-hover/swatch:opacity-100"
+          />
+        </DataInteractive>
         <DataInteractive
           as="input"
           id={`${id}-value`}
           type="text"
-          aria-label={t("common.fields.hexValue", { value1: label })}
+          aria-label={t("common.fields.hexValue", { value1: accessibleLabel })}
           value={draft}
           spellCheck={false}
           autoComplete="off"
           maxLength={7}
-          className="h-11! w-full min-w-0 flex-1 rounded-none! border-0! bg-transparent! px-2 text-ui-text outline-none data-hover:control-hover! transition-colors"
+          className="h-11! w-full min-w-0 flex-1 rounded-none! border-0! bg-transparent! px-2.5 text-center font-mono! text-xs! text-ui-text outline-none data-hover:control-hover! transition-colors @max-[120px]/color:px-px @max-[120px]/color:text-[10px]!"
           onChange={(event) => {
             setDraft(event.target.value);
             const color = normalize(event.target.value);

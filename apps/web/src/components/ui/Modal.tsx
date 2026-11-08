@@ -11,6 +11,7 @@ import { X } from "lucide-react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -32,11 +33,12 @@ const modalPanelStyles = cva("flex w-full flex-col bg-ui-panel", {
       false:
         "gap-4 rounded-lg border border-solid border-ui-border p-5 shadow-xl",
     },
-    size: { compact: "", wide: "" },
+    size: { compact: "", wide: "", picker: "" },
   },
   compoundVariants: [
     { fullscreen: false, size: "compact", className: "max-w-md" },
     { fullscreen: false, size: "wide", className: "max-w-200" },
+    { fullscreen: false, size: "picker", className: "max-w-none" },
   ],
 });
 
@@ -78,6 +80,7 @@ export function Modal({
   children,
   fullscreen = false,
   size = "compact",
+  pickerCardWidth = 120,
   onExited,
   ready,
 }: {
@@ -88,14 +91,59 @@ export function Modal({
   returnFocus: RefObject<HTMLButtonElement | null>;
   children: ReactNode;
   fullscreen?: boolean;
-  size?: "compact" | "wide";
+  size?: "compact" | "wide" | "picker";
+  pickerCardWidth?: number;
   onExited?: () => void;
   ready?: boolean;
 }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   const pendingCloseButton = useRef<HTMLButtonElement>(null);
+  const scrollFrame = useRef<HTMLDivElement>(null);
+  const [pickerPanel, setPickerPanel] = useState<HTMLElement | null>(null);
+  const [pickerWidth, setPickerWidth] = useState<number>();
   const [prepared, setPrepared] = useState(false);
   const contentReady = ready === undefined || prepared;
+  useLayoutEffect(() => {
+    const frame = scrollFrame.current;
+    const content = pickerPanel;
+    if (
+      !open ||
+      !contentReady ||
+      fullscreen ||
+      size !== "picker" ||
+      !frame ||
+      !content
+    )
+      return;
+    const fit = () => {
+      const frameStyle = getComputedStyle(frame);
+      const panelStyle = getComputedStyle(content);
+      const grid = content.querySelector('[role="region"] > .grid');
+      const gap = grid ? parseFloat(getComputedStyle(grid).columnGap) : 10;
+      const inset =
+        parseFloat(panelStyle.paddingLeft) +
+        parseFloat(panelStyle.paddingRight) +
+        parseFloat(panelStyle.borderLeftWidth) +
+        parseFloat(panelStyle.borderRightWidth);
+      const available = Math.min(
+        frame.clientWidth -
+          parseFloat(frameStyle.paddingLeft) -
+          parseFloat(frameStyle.paddingRight),
+        6 * pickerCardWidth + 5 * gap + inset,
+      );
+      const columns = Math.max(
+        1,
+        Math.floor((available - inset + gap) / (pickerCardWidth + gap)),
+      );
+      setPickerWidth(
+        Math.min(available, columns * (pickerCardWidth + gap) - gap + inset),
+      );
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [open, contentReady, fullscreen, size, pickerCardWidth, pickerPanel]);
   useEffect(() => {
     if (!open) {
       setPrepared(false);
@@ -148,6 +196,7 @@ export function Modal({
             className="fixed inset-0 bg-black/60"
           />
           <div
+            ref={scrollFrame}
             data-modal-scroll
             data-overlay-scroll="y"
             className={modalFrameStyles({ fullscreen })}
@@ -155,6 +204,7 @@ export function Modal({
             <div className="flex min-h-full items-center justify-center">
               {contentReady ? (
                 <DialogPanel
+                  ref={setPickerPanel}
                   key="content"
                   data-modal-panel
                   as={MotionDiv}
@@ -164,6 +214,11 @@ export function Modal({
                   animate={{ opacity: 1 }}
                   motionTransition={transition}
                   className={modalPanelStyles({ fullscreen, size })}
+                  style={
+                    size === "picker" && !fullscreen
+                      ? { width: pickerWidth }
+                      : undefined
+                  }
                 >
                   <InitialDialogFocus
                     target={touch ? closeButton : (initialFocus ?? closeButton)}

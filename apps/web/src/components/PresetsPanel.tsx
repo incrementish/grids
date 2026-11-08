@@ -1,5 +1,4 @@
 import {
-  SlidersHorizontal,
   RectangleVertical,
   RectangleHorizontal,
   Square,
@@ -25,7 +24,6 @@ import {
   ChoiceButton,
   DisclosureChevron,
   DisclosureTrigger,
-  ColorField,
   IconRadioField,
   PercentField,
   SelectField,
@@ -123,6 +121,7 @@ export function ThemeBuilder({
       board.headingBackgroundColor?.toLowerCase() === palette.background &&
       board.headingTextColor?.toLowerCase() === palette.text &&
       board.cellTextColor?.toLowerCase() === palette.text &&
+      (board.cardBorderColor ?? palette.text).toLowerCase() === palette.text &&
       board.captionOverlayColor?.toLowerCase() === palette.overlay,
   );
   const appliedPalette =
@@ -350,26 +349,16 @@ export function ThemeBuilder({
                             }
                           />
                           {board.cardBorderVisible && (
-                            <div className="flex flex-col gap-4">
-                              <ColorField
-                                id="card-border-color"
-                                label={t("builder.borderColor")}
-                                value={board.cardBorderColor ?? "#eef1f3"}
-                                onChange={(cardBorderColor) =>
-                                  onChange({ cardBorderColor })
-                                }
-                              />
-                              <PercentField
-                                id="card-border-width"
-                                label={t("builder.borderThickness")}
-                                max={5}
-                                outputValue={`${board.cardBorderWidth ?? 0.5}%`}
-                                value={board.cardBorderWidth ?? 0.5}
-                                onChange={(cardBorderWidth) =>
-                                  onChange({ cardBorderWidth })
-                                }
-                              />
-                            </div>
+                            <PercentField
+                              id="card-border-width"
+                              label={t("builder.borderThickness")}
+                              max={5}
+                              outputValue={`${board.cardBorderWidth ?? 0.5}%`}
+                              value={board.cardBorderWidth ?? 0.5}
+                              onChange={(cardBorderWidth) =>
+                                onChange({ cardBorderWidth })
+                              }
+                            />
                           )}
                         </>
                       )}
@@ -482,45 +471,12 @@ export function ThemeBuilder({
                       {(index < 2 ||
                         (index === 2 && board.headingVisible) ||
                         (index === 3 && board.titlesVisible !== false)) && (
-                        <Disclosure
-                          as="section"
-                          key={index}
-                          data-design-accordion
+                        <div
                           data-design-customize
-                          className="min-w-0 border-0 border-l-2 border-solid border-ui-border pl-3"
+                          className="flex min-w-0 flex-col gap-4 border-0"
                         >
-                          {({ open: customOpen }) => (
-                            <>
-                              <DisclosureTrigger
-                                level="customize"
-                                data-customize-toggle
-                              >
-                                <SlidersHorizontal
-                                  aria-hidden="true"
-                                  className="size-4"
-                                />
-                                <span className="min-w-0 flex-1">
-                                  {t("builder.customizeNamed", {
-                                    value1: item.title,
-                                  })}
-                                </span>
-                                <DisclosureChevron open={customOpen} />
-                              </DisclosureTrigger>
-                              <AnimatePresence initial={false}>
-                                {customOpen && (
-                                  <AccordionPanel
-                                    key="customize"
-                                    onReveal={revealDesignPanel}
-                                  >
-                                    <div className="flex min-w-0 flex-col gap-4 pt-3">
-                                      {children[index]}
-                                    </div>
-                                  </AccordionPanel>
-                                )}
-                              </AnimatePresence>
-                            </>
-                          )}
-                        </Disclosure>
+                          {children[index]}
+                        </div>
                       )}
                     </fieldset>
                   </AccordionPanel>

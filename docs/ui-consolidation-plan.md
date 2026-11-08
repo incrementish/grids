@@ -29,7 +29,7 @@ We are using Tailwind utilities, but most editor chrome is **not using Tailwind'
 | Primary button foreground | Literal `#19200d` in the shared recipe                                                                                    | Should become a semantic foreground token                                              |
 | Brand foreground/shadows  | Further literals, including `#171a12` and translucent black shadows                                                       | Centralize intentional shared values; use standard shadow recipes where suitable       |
 | Canvas themes             | Eight hex palettes: Ink, Forest, Ocean, Plum, Rose, Cocoa, Sun, Snow                                                      | Artwork data, not editor chrome                                                        |
-| User-selected colors      | Persisted hex values, native color inputs and editable hex text                                                           | Must remain supported independently of the Tailwind palette                            |
+| User-selected colors      | Persisted hex values and native color inputs                                                                              | Must remain supported independently of the Tailwind palette                            |
 | Provider branding         | Facebook/Discord brand hex values and Google's multicolor mark                                                            | Brand exceptions, currently in dormant UI                                              |
 | Tools over images         | Translucent black/white and calculated contrast                                                                           | Legitimate contrast treatment over arbitrary image content                             |
 
@@ -59,7 +59,7 @@ Preserve `control-hover`: its existing contract mixes 25% of the relevant tint i
 | `ColorField`             | Native picker, hex draft validation, Headless UI DataInteractive      | Keep behavior; share field framing and explicit size variants                           |
 | `PercentField`           | Native range, normalized mapping, accessible output                   | Add a small range base only where needed; retain percentage mapping as an adapter       |
 | `Toggle`                 | Headless UI Switch, Motion thumb animation                            | Keep one implementation and shared switch/motion recipes                                |
-| Design disclosures       | Headless UI Disclosure and shared Motion AccordionPanel               | Share trigger/chevron recipes across main and Customize levels                          |
+| Design disclosures       | Headless UI Disclosure and shared Motion AccordionPanel               | Share main-section trigger/chevron recipes; show detailed controls directly             |
 | `Modal`                  | All dialog sites share Headless UI Dialog plus Motion                 | Keep one modal; use size/layout CVA variants and preserve focus/exit coordination       |
 | `ImageTabs`              | Shared tabs, but custom keyboard/ARIA logic                           | Test Headless UI Tabs against selected-native-disabled requirements before replacing    |
 | Reset choices            | Native labeled checkboxes and separate theme RadioGroup               | Shared checkbox field/option recipe; preserve selective-reset behavior                  |
@@ -109,7 +109,7 @@ Keep ColorField's optional-`#` six-digit input, valid draft updates, invalid/inc
 
 ### Disclosures, Popups And Motion
 
-[PresetsPanel.tsx](../apps/web/src/components/PresetsPanel.tsx#L1) is the owning Design composition. Reuse its shared AccordionPanel, but consolidate currently different trigger and chevron treatments into a DisclosureTrigger recipe with `level="main" | "customize"` and narrowly justified adornments.
+[PresetsPanel.tsx](../apps/web/src/components/PresetsPanel.tsx#L1) is the owning Design composition. Reuse its shared AccordionPanel and DisclosureTrigger recipe for main section headers, and render detailed controls directly inside each section.
 
 Keep Headless UI responsible for disclosure state, linked panels and keyboard behavior. Keep the existing one-main-section-open policy and application-specific reveal logic: the library cannot infer the sidebar's sticky tabs, clipping or available content height.
 
@@ -188,7 +188,7 @@ Gate: normalized ranges/output, independent typography, reset selections, blur/E
 
 ### 4. Consolidate Disclosure And Popup Styling/Motion
 
-Share main/Customize trigger and chevron recipes, timing and existing AccordionPanel. Align Listbox popup styling with reusable surface/option recipes. Do not expand unused Menu exports.
+Share main-section trigger and chevron recipes, timing and existing AccordionPanel. Keep detailed controls directly visible within the open section. Align Listbox popup styling with reusable surface/option recipes. Do not expand unused Menu exports.
 
 Gate: one-main-section-open behavior, linked panels, keyboard toggles, reveal in the owning scroller, exit inertness, reduced motion, dropdown scroll handles and outside dismissal remain correct.
 
@@ -222,7 +222,7 @@ Each phase should be an independently reviewable change. Keep shared APIs stable
 
 Reuse [../apps/web/tests/editor.spec.mjs](../apps/web/tests/editor.spec.mjs), [../apps/web/tests/model.spec.mjs](../apps/web/tests/model.spec.mjs) and [../apps/web/tests/local-only.spec.mjs](../apps/web/tests/local-only.spec.mjs). Add focused cases there for meaningful new behavior or gaps, rather than introducing a parallel test system.
 
-Relevant existing editor checks cover shared quarter-strength hover, normalized sliders, editable hex/listboxes, native-disabled keyboard choices/tabs, joined buttons, Design disclosures/reveal, reduced-motion animation, viewport-edge modals, overlay scrollbars, independent typography, borders and preview/export matching. Select the affected checks for each phase instead of rerunning the entire suite after every edit.
+Relevant existing editor checks cover shared quarter-strength hover, normalized sliders, native color inputs/listboxes, native-disabled keyboard choices/tabs, joined buttons, Design disclosures/reveal, reduced-motion animation, viewport-edge modals, overlay scrollbars, independent typography, borders and preview/export matching. Select the affected checks for each phase instead of rerunning the entire suite after every edit.
 
 Run typechecking/build and touched-file formatting/canonical Tailwind diagnostics for code phases. Run broader editor/local-only/model gates once at the integrated checkpoint, with desktop, narrow mobile, short landscape, touch, keyboard and reduced-motion coverage. Visually inspect stable control geometry and theme feedback, not just screenshots of a loading state.
 

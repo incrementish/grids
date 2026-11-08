@@ -149,7 +149,7 @@ function OnlineImage({
       : selectedSrc;
   return (
     <div
-      className="relative w-full panel-bottom:h-full panel-bottom:w-auto"
+      className="relative w-(--library-card-width,120px) self-start"
       style={{
         aspectRatio: `600 / ${cellGeometry(props.gridStyle, 600, props.captionRows).height}`,
       }}
@@ -198,7 +198,7 @@ export function OnlineImages({
   provider,
   onImport,
   selectionOnly = false,
-  gridClassName = "grid grid-cols-2 gap-2.5 max-[901px]:grid-flow-col max-[901px]:h-full max-[901px]:grid-rows-[minmax(0,1fr)] max-[901px]:auto-cols-max max-[901px]:grid-cols-none",
+  gridClassName = "grid grid-cols-[repeat(auto-fill,var(--library-card-width,120px))] gap-2.5 panel-bottom:grid-flow-col panel-bottom:grid-rows-[minmax(0,1fr)] panel-bottom:auto-cols-(--library-card-width,120px) panel-bottom:grid-cols-none",
   searchActions,
   dragSource,
   compactRow = false,
