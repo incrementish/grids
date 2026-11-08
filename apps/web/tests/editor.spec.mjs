@@ -1816,6 +1816,227 @@ test("canvas padding keeps overflow inside its viewport on short and narrow scre
   await expect(page.locator("#gap")).toHaveValue("100");
 });
 
+test("brand keyboard focus rings only the rounded icon", async ({
+  page,
+}, testInfo) => {
+  await page.goto("./");
+  for (const width of [1440, 390, 260]) {
+    await setEditorViewport(page, { width, height: 844 });
+    const brand = page.getByRole("link", { name: "Gridz", exact: true });
+    await tabThroughTo(page, brand);
+    await expect(brand).toHaveAttribute("href", "./");
+    expect(
+      await brand.evaluate((element) => {
+        const icon = element.querySelector(".brand-mark");
+        const style = getComputedStyle(icon);
+        const bounds = icon.getBoundingClientRect();
+        return {
+          keyboardFocus: element.matches(":focus-visible"),
+          linkOutline: getComputedStyle(element).outlineStyle,
+          iconOutline: style.outlineStyle,
+          iconOutlineWidth: style.outlineWidth,
+          iconOutlineOffset: style.outlineOffset,
+          iconRadius: style.borderRadius,
+          textOutline: getComputedStyle(
+            element.querySelector("[data-brand-label]"),
+          ).outlineStyle,
+          contained:
+            bounds.left >= 4 &&
+            bounds.top >= 4 &&
+            bounds.right + 4 <= innerWidth,
+        };
+      }),
+    ).toEqual({
+      keyboardFocus: true,
+      linkOutline: "none",
+      iconOutline: "solid",
+      iconOutlineWidth: "2px",
+      iconOutlineOffset: "2px",
+      iconRadius: "4px",
+      textOutline: "none",
+      contained: true,
+    });
+    await page.screenshot({
+      path: testInfo.outputPath(`brand-focus-${width}.png`),
+    });
+  }
+  await Promise.all([
+    page.waitForEvent("framenavigated"),
+    page.getByRole("link", { name: "Gridz", exact: true }).press("Enter"),
+  ]);
+  await expect(page.locator("#board-grid")).toBeVisible();
+});
+
+test("slider keyboard focus rings the thumb without clipping", async ({
+  page,
+}, testInfo) => {
+  const thumbRing = async (slider) =>
+    slider.evaluate(
+      async (element, image) => {
+        const bitmap = await createImageBitmap(
+          await (await fetch(`data:image/png;base64,${image}`)).blob(),
+        );
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const context = canvas.getContext("2d");
+        context.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        const reference = document.createElement("canvas").getContext("2d");
+        reference.fillStyle =
+          getComputedStyle(element).getPropertyValue("--accent");
+        reference.fillRect(0, 0, 1, 1);
+        const accent = reference.getImageData(0, 0, 1, 1).data;
+        reference.fillStyle =
+          getComputedStyle(element).getPropertyValue("--line");
+        reference.fillRect(0, 0, 1, 1);
+        const line = reference.getImageData(0, 0, 1, 1).data;
+        reference.fillStyle = getComputedStyle(
+          element.closest("header") ?? element.closest("[data-editor-sidebar]"),
+        ).backgroundColor;
+        reference.fillRect(0, 0, 1, 1);
+        const surface = reference.getImageData(0, 0, 1, 1).data;
+        const hasColor = (pixelX, pixelY, color, tolerance = 10) => {
+          for (let offsetY = -1; offsetY <= 1; offsetY++) {
+            for (let offsetX = -1; offsetX <= 1; offsetX++) {
+              const sampleX = Math.max(
+                0,
+                Math.min(canvas.width - 1, Math.round(pixelX + offsetX)),
+              );
+              const sampleY = Math.max(
+                0,
+                Math.min(canvas.height - 1, Math.round(pixelY + offsetY)),
+              );
+              const pixel = context.getImageData(sampleX, sampleY, 1, 1).data;
+              if (
+                [0, 1, 2].every(
+                  (channel) =>
+                    Math.abs(pixel[channel] - color[channel]) < tolerance,
+                )
+              )
+                return true;
+            }
+          }
+          return false;
+        };
+        const hasAccent = (pixelX, pixelY) => hasColor(pixelX, pixelY, accent);
+        const bounds = element.getBoundingClientRect();
+        const ratio =
+          (Number(element.value) - Number(element.min)) /
+          (Number(element.max) - Number(element.min));
+        const centerX =
+          ((13 + (bounds.width - 26) * ratio) * canvas.width) / bounds.width;
+        const centerY = canvas.height / 2;
+        const ringRadius = (11 * canvas.height) / bounds.height;
+        const gapRadius = (9 * canvas.width) / bounds.width;
+        const handleColor = context.getImageData(
+          Math.round(centerX),
+          Math.floor(centerY),
+          1,
+          1,
+        ).data;
+        const trackX =
+          ((4 + ((bounds.width - 8) * ratio) / 3) * canvas.width) /
+          bounds.width;
+        const trackColor = context.getImageData(
+          Math.round(trackX),
+          Math.floor(centerY),
+          1,
+          1,
+        ).data;
+        return {
+          leftGap: hasColor(centerX - gapRadius, centerY, surface),
+          rightGap: hasColor(centerX + gapRadius, centerY, surface),
+          filledTrackMatchesHandle:
+            ratio > 0
+              ? [0, 1, 2].every(
+                  (channel) =>
+                    Math.abs(handleColor[channel] - trackColor[channel]) < 3,
+                )
+              : null,
+          handleBorder: hasColor(
+            centerX,
+            centerY - (8 * canvas.height) / bounds.height,
+            line,
+            25,
+          ),
+          top: hasAccent(centerX, centerY - ringRadius),
+          bottom: hasAccent(centerX, centerY + ringRadius),
+          endpoint:
+            ratio === 0
+              ? hasAccent(1, centerY)
+              : ratio === 1
+                ? hasAccent(canvas.width - 2, centerY)
+                : true,
+          corner: hasAccent(0, 0),
+        };
+      },
+      (await slider.screenshot()).toString("base64"),
+    );
+  await page.goto("./");
+  for (const width of [1440, 390, 260]) {
+    await setEditorViewport(page, { width, height: 1000 });
+    await expect(page.locator("[data-editor-sidebar]")).toHaveCount(1);
+    for (const id of ["canvas-zoom", "cell-font-weight", "cell-font-size"]) {
+      if (id !== "canvas-zoom") await openDesignControls(page, id);
+      const slider = page.locator(`#${id}`);
+      await slider.scrollIntoViewIfNeeded();
+      await tabThroughTo(page, slider, 60);
+      await expect(slider).toBeFocused();
+      await expect(slider).toBeInViewport({ ratio: 1 });
+      const focus = await slider.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          visible: element.matches(":focus-visible"),
+          outline: style.outlineStyle,
+          padding: parseFloat(style.paddingLeft),
+          height: element.getBoundingClientRect().height,
+        };
+      });
+      expect(focus).toMatchObject({
+        visible: true,
+        outline: "none",
+        padding: 4,
+        height: 32,
+      });
+      const minimum = Number(await slider.getAttribute("min"));
+      const maximum = Number(await slider.getAttribute("max"));
+      for (const value of [minimum, (minimum + maximum) / 2, maximum]) {
+        await slider.fill(String(value));
+        await slider.press(value === minimum ? "ArrowLeft" : "ArrowRight");
+        if (value !== minimum && value !== maximum)
+          await slider.press("ArrowLeft");
+        const painted = await thumbRing(slider);
+        expect(painted).toMatchObject({
+          leftGap: true,
+          rightGap: true,
+          handleBorder: true,
+          top: true,
+          bottom: true,
+          endpoint: true,
+          corner: false,
+        });
+        if (value > minimum)
+          expect(painted.filledTrackMatchesHandle).toBe(true);
+        await page.screenshot({
+          path: testInfo.outputPath(`slider-thumb-${id}-${width}-${value}.png`),
+        });
+      }
+      await page.keyboard.press("Tab");
+      await slider.click();
+      await expect(slider).toBeFocused();
+      expect(
+        await slider.evaluate((element) => element.matches(":focus-visible")),
+      ).toBe(false);
+      expect(await thumbRing(slider)).toMatchObject({
+        handleBorder: true,
+        top: false,
+        bottom: false,
+      });
+    }
+  }
+});
+
 test("settings sliders use normalized percentages and refined dark defaults", async ({
   page,
 }) => {
@@ -2127,7 +2348,16 @@ test("appearance choices support keyboard selection on narrow and desktop screen
       exact: true,
     });
     await expect(landscape).toBeEnabled();
-    await landscape.focus();
+    await tabThroughTo(page, landscape);
+    const square = shapes.getByRole("radio", { name: "Square", exact: true });
+    await page.keyboard.press("Tab");
+    await expect(square).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(landscape).toBeFocused();
+    await landscape.press("ArrowRight");
+    await expect(square).toBeChecked();
+    await expect(square).toBeDisabled();
+    await tabThroughTo(page, landscape);
     await landscape.press(" ");
     await expect(
       shapes.getByRole("radio", { name: "Landscape", exact: true }),
@@ -3943,6 +4173,48 @@ test("theme builder composes independent choices and detailed values without rep
   await selectField(page, "builder-spacing", "compact");
   await builder.locator("[data-customize-toggle]").click();
   await page.locator("#gap").fill("25");
+  const spacing = page.locator("#builder-spacing");
+  for (const width of [1440, 390, 260]) {
+    await setEditorViewport(page, { width, height: 1000 });
+    await expect(page.locator("[data-editor-sidebar]")).toHaveCount(1);
+    await openDesignControls(page, "gap");
+    await expect(spacing).toHaveText("Gap 5% / Padding 6%");
+    const customized = await savedWorkspace(page);
+    await spacing.click();
+    const menu = page.getByRole("listbox");
+    await expect(menu.getByRole("option")).toHaveText([
+      "Seamless",
+      "Compact",
+      "Spacious",
+    ]);
+    await expect(
+      menu.getByRole("option", { name: "Custom", exact: true }),
+    ).toHaveCount(0);
+    await expect(menu.locator("[role=option]:disabled")).toHaveCount(0);
+    await expect(menu).toHaveCSS("opacity", "1");
+    await page.screenshot({
+      path: testInfo.outputPath(`spacing-presets-${width}.png`),
+    });
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    expect((await savedWorkspace(page)).grid).toEqual(customized.grid);
+    await spacing.click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await expect(menu).toHaveCount(0);
+    await expect(spacing).toHaveText("Spacious");
+    expect((await savedWorkspace(page)).grid).toMatchObject({
+      gap: 60,
+      canvasPadding: 60,
+    });
+    await selectField(page, "builder-spacing", "compact");
+    await openDesignControls(page, "gap");
+    await page.locator("#gap").fill("33");
+    await expect(spacing).toHaveText("Gap 6.6% / Padding 6%");
+    await page.locator("#gap").fill("25");
+  }
+  await setEditorViewport(page, { width: 1440, height: 1000 });
+  await expect(page.locator("[data-editor-sidebar]")).toHaveCount(1);
   await builder.getByRole("button", { name: /3 Canvas heading/ }).click();
   await selectField(page, "heading-font", "Bangers");
   await builder
@@ -4004,6 +4276,9 @@ test("theme builder composes independent choices and detailed values without rep
   expect(composed.exportSettings).toEqual(original.exportSettings);
   await reloadWorkspace(page);
   expect((await savedWorkspace(page)).grid).toEqual(composed.grid);
+  await openDesignSection(page, "Layout");
+  await expect(spacing).toHaveText("Gap 5% / Padding 6%");
+  await openDesignSection(page, "Colors");
   await expect(
     builder.getByRole("button", { name: /1 Colors Rose · Modified/ }),
   ).toBeVisible();

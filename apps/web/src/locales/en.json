@@ -15,6 +15,7 @@
     "heading": "Canvas heading",
     "captions": "Card headings",
     "custom": "Custom",
+    "customSpacing": "Gap {gap, number}% / Padding {padding, number}%",
     "modifiedNamed": "{value1} · Modified",
     "off": "Off",
     "spacing": "Spacing",

@@ -36,6 +36,7 @@ import {
   useRef,
   useState,
   type ButtonHTMLAttributes,
+  type CSSProperties,
   type ReactNode,
   type Ref,
 } from "react";
@@ -106,7 +107,15 @@ export function RangeField({
         value={value}
         disabled={disabled}
         aria-valuetext={valueText}
-        className={layout === "inline" ? "h-11 min-w-0 flex-1" : "h-8"}
+        style={
+          {
+            "--range-progress": `${max > min ? ((value - min) / (max - min)) * 100 : 0}%`,
+          } as CSSProperties
+        }
+        className={clsx(
+          "ui-range outline-none!",
+          layout === "inline" ? "h-11 min-w-0 flex-1" : "h-8",
+        )}
         onChange={(event) => onChange(Number(event.currentTarget.value))}
       />
       {layout === "inline" && result}
@@ -426,7 +435,14 @@ export function ChoiceButton({
     props.disabled ||
     props["aria-disabled"] === true ||
     props["aria-disabled"] === "true";
-  return <button {...props} ref={ref} disabled={disabled} />;
+  return (
+    <button
+      {...props}
+      ref={ref}
+      disabled={disabled}
+      tabIndex={props.role === "radio" && !disabled ? 0 : props.tabIndex}
+    />
+  );
 }
 
 export function IconRadioField({
@@ -534,6 +550,7 @@ export function SelectField({
   id,
   label,
   value,
+  valueLabel,
   options,
   onChange,
   compact = false,
@@ -542,6 +559,7 @@ export function SelectField({
   id: string;
   label: string;
   value: string;
+  valueLabel?: string;
   options: {
     value: string;
     label: string;
@@ -573,7 +591,7 @@ export function SelectField({
           compact
             ? t("common.fields.value", {
                 value1: label,
-                value2: selected?.label ?? value,
+                value2: selected?.label ?? valueLabel ?? value,
               })
             : undefined
         }
@@ -599,7 +617,7 @@ export function SelectField({
             largeFontPreview && "text-[20px] leading-7",
           )}
         >
-          {selected?.label ?? value}
+          {selected?.label ?? valueLabel ?? value}
         </span>
         <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
       </ListboxButton>

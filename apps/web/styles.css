@@ -233,6 +233,71 @@ html:has(#headlessui-portal-root [role="dialog"][aria-modal="true"]) {
     height: 44px;
     margin: 0;
   }
+  input.ui-range {
+    --range-fill: var(--accent);
+    --range-focus-surface: var(--panel);
+    appearance: none;
+    background: transparent;
+    padding-inline: 4px;
+    outline: none;
+  }
+  header input.ui-range {
+    --range-focus-surface: var(--bg);
+  }
+  input.ui-range::-webkit-slider-runnable-track {
+    box-sizing: border-box;
+    height: 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--range-fill) var(--range-progress, 0%),
+      var(--selected) var(--range-progress, 0%)
+    );
+  }
+  input.ui-range::-moz-range-track {
+    box-sizing: border-box;
+    height: 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--selected);
+  }
+  input.ui-range::-moz-range-progress {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--range-fill);
+  }
+  input.ui-range::-webkit-slider-thumb {
+    appearance: none;
+    box-sizing: border-box;
+    width: 16px;
+    height: 16px;
+    margin-top: -5px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  input.ui-range::-moz-range-thumb {
+    box-sizing: border-box;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  input.ui-range:disabled {
+    opacity: 0.5;
+  }
+  input.ui-range:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 2px var(--range-focus-surface);
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  input.ui-range:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 2px var(--range-focus-surface);
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
   output {
     font-size: 10px;
     color: var(--muted);

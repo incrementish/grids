@@ -244,12 +244,12 @@ export function EditorLayout({
   const [library, workspace, themes] = children;
   const brand = (
     <a
-      className="brand shrink-0 group-data-compact-export/header:gap-0"
+      className="brand group/brand shrink-0 outline-none! group-data-compact-export/header:gap-0"
       href="./"
       aria-label="Gridz"
       title="Gridz"
     >
-      <span className="brand-mark">
+      <span className="brand-mark group-focus-visible/brand:outline-2 group-focus-visible/brand:outline-offset-2 group-focus-visible/brand:outline-ui-accent">
         <PanelsTopLeft />
       </span>
       <span

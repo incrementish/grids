@@ -305,6 +305,10 @@ export function ThemeBuilder({
                           <SelectField
                             id="builder-spacing"
                             label={t("builder.spacing")}
+                            valueLabel={t("builder.customSpacing", {
+                              gap: board.gap / 6,
+                              padding: (board.canvasPadding ?? 60) / 6,
+                            })}
                             value={
                               board.gap === 0 && board.canvasPadding === 0
                                 ? "flush"
@@ -319,11 +323,6 @@ export function ThemeBuilder({
                               { value: "flush", label: t("builder.flush") },
                               { value: "compact", label: t("builder.compact") },
                               { value: "airy", label: t("builder.airy") },
-                              {
-                                value: "custom",
-                                label: t("builder.custom"),
-                                disabled: true,
-                              },
                             ]}
                             onChange={(value) => {
                               if (value !== "custom")
