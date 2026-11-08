@@ -758,7 +758,7 @@ export default function App() {
               min={50}
               max={200}
               step={5}
-              className="w-40 shrink-0 group-data-compact-zoom/header:w-20"
+              className="w-(--header-zoom-width,160px) min-w-20 max-w-40 shrink-0 group-data-bare-zoom/header:min-w-8 group-data-bare-zoom/header:[&>label]:sr-only"
               onChange={setZoom}
             />
           }

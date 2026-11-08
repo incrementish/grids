@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { Button, MotionDiv } from "./ui/controls";
@@ -102,14 +103,15 @@ export function EditorLayout({
   const resizeControls = useRef<HTMLDivElement>(null);
   const controlsInHeader = Boolean(canvasControls);
   const headerBrand = useRef<HTMLDivElement>(null);
-  const [brandInHeader, setBrandInHeader] = useState(false);
+  const [brandInHeader, setBrandInHeader] = useState(true);
+  const [controlsLeft, setControlsLeft] = useState(12);
   const expandedExportSpacing = useRef(0);
   const expandedBrandGap = useRef(0);
-  const [compactZoom, setCompactZoom] = useState(false);
+  const [headerZoomWidth, setHeaderZoomWidth] = useState(160);
   const [compactExport, setCompactExport] = useState(false);
-  const [headerLayout, setHeaderLayout] = useState<
-    "full" | "icon" | "shifted" | "scroll"
-  >("full");
+  const [headerLayout, setHeaderLayout] = useState<"shifted" | "bare">(
+    "shifted",
+  );
   useLayoutEffect(() => {
     const controls = resizeControls.current;
     const actions = headerActions.current;
@@ -174,48 +176,49 @@ export function EditorLayout({
         gap * Math.max(0, children.length - 1);
       // Width-based so the result does not depend on the current layout mode.
       const headerWidth = headerElement.current?.clientWidth ?? 0;
-      const zoneWidth = headerWidth - (!compact && sidebarOpen ? 350 : 0);
       const actionsRight = headerWidth - 12;
       const otherActionsWidth =
         actions.getBoundingClientRect().width -
         exportButton.getBoundingClientRect().width;
       const zoomField = controls.querySelector("#canvas-zoom")?.parentElement;
       const zoomWidth = zoomField?.getBoundingClientRect().width ?? 0;
-      const expandedZoomWidth = zoomWidth * (compactZoom ? 2 : 1);
+      const expandedZoomWidth = zoomField
+        ? parseFloat(getComputedStyle(zoomField).maxWidth)
+        : 0;
       const fullControlsWidth = controlsWidth + expandedZoomWidth - zoomWidth;
-      const fits = (exportWidth: number, width: number) =>
-        actionsRight - otherActionsWidth - exportWidth >=
-        zoneWidth / 2 + width / 2 + gap;
-      const brandFits = (brandWidth: number, width: number) =>
-        12 + brandWidth + gap <= zoneWidth / 2 - width / 2;
-      const nextCompactExport = window.matchMedia("(width < 450px)").matches;
+      const nextCompactExport =
+        actionsRight -
+          otherActionsWidth -
+          fullExportWidth -
+          (12 + fullBrandWidth + gap * 2) <
+        fullControlsWidth;
       const iconWidth = exportButton.getBoundingClientRect().height;
       const exportWidth = nextCompactExport ? iconWidth : fullExportWidth;
       const brandWidth = nextCompactExport ? brandIconWidth : fullBrandWidth;
-      const controlsFit = (width: number) =>
-        fits(exportWidth, width) && brandFits(brandWidth, width);
-      const nextCompactZoom =
-        Boolean(zoomField) && !controlsFit(fullControlsWidth);
-      const nextControlsWidth =
-        fullControlsWidth - (nextCompactZoom ? expandedZoomWidth / 2 : 0);
-      const leftControlsRight =
-        parseFloat(getComputedStyle(controls).paddingLeft) + nextControlsWidth;
-      const nextLayout = fits(exportWidth, nextControlsWidth)
-        ? nextCompactExport
-          ? "icon"
-          : "full"
-        : actionsRight - otherActionsWidth - exportWidth >=
-            leftControlsRight + gap
-          ? "shifted"
-          : "scroll";
-      setHeaderLayout(nextLayout);
-      setCompactZoom(nextCompactZoom);
-      setCompactExport(nextCompactExport);
-      setBrandInHeader(
-        nextLayout !== "shifted" &&
-          nextLayout !== "scroll" &&
-          brandFits(brandWidth, nextControlsWidth),
+      const minimumControlsLeft = 12 + brandWidth + gap;
+      const actionsLeft = actionsRight - otherActionsWidth - exportWidth;
+      const availableControlsWidth = actionsLeft - gap - minimumControlsLeft;
+      const availableZoomWidth =
+        availableControlsWidth - (fullControlsWidth - expandedZoomWidth);
+      const nextLayout = availableZoomWidth < 80 ? "bare" : "shifted";
+      const minimumZoomWidth = zoomField
+        ? nextLayout === "bare"
+          ? 32
+          : 80
+        : 0;
+      const nextZoomWidth = Math.max(
+        minimumZoomWidth,
+        Math.min(expandedZoomWidth, availableZoomWidth),
       );
+      const nextControlsWidth =
+        fullControlsWidth - expandedZoomWidth + nextZoomWidth;
+      setControlsLeft(
+        Math.max(minimumControlsLeft, actionsLeft - gap - nextControlsWidth),
+      );
+      setHeaderLayout(nextLayout);
+      setHeaderZoomWidth(nextZoomWidth);
+      setCompactExport(nextCompactExport);
+      setBrandInHeader(true);
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -237,7 +240,7 @@ export function EditorLayout({
     compact,
     sidebarOpen,
     headerLayout,
-    compactZoom,
+    headerZoomWidth,
     compactExport,
     controlsInHeader,
   ]);
@@ -261,23 +264,22 @@ export function EditorLayout({
     </a>
   );
   const canvasActions = (
-    <div
-      className={`relative flex gap-2 ${headerLayout === "scroll" ? "w-full min-w-0 shrink-0 flex-row items-center pr-3" : "w-full min-w-0 flex-col"}`}
-    >
+    <div className="relative flex w-full min-w-0 flex-col gap-2">
       <div
         ref={headerBrand}
         data-header-brand
         aria-hidden={!brandInHeader}
         inert={!brandInHeader}
-        className={`absolute top-1/2 left-3 flex h-11 -translate-y-1/2 items-center ${brandInHeader ? "" : "pointer-events-none invisible"}`}
+        className="absolute top-1/2 left-3 flex h-11 -translate-y-1/2 items-center"
       >
         {brand}
       </div>
       <div
         ref={resizeControls}
         data-canvas-controls
-        data-overlay-scroll={headerLayout === "scroll" ? "x" : "none"}
-        className={`flex min-h-11 min-w-0 items-center gap-2 pl-3 ${headerLayout === "scroll" ? "min-w-0 flex-1 flex-nowrap justify-start self-stretch overflow-x-auto overflow-y-hidden bg-ui-panel py-3 pr-3" : `overflow-hidden pr-3 flex-wrap justify-center ${headerLayout === "shifted" ? "justify-start!" : ""} ${!compact && sidebarOpen ? "w-[calc(100%-350px)]" : "w-full"}`}`}
+        data-overlay-scroll="none"
+        style={{ paddingLeft: controlsLeft }}
+        className="flex min-h-11 w-full min-w-0 flex-nowrap items-center justify-start gap-2 overflow-hidden px-3"
       >
         {canvasControls}
       </div>
@@ -285,7 +287,7 @@ export function EditorLayout({
         ref={headerActions}
         role="group"
         aria-label={t("editor.panels")}
-        className={`flex items-center gap-2 ${headerLayout === "scroll" ? "relative my-3 shrink-0" : "absolute top-1/2 right-3 -translate-y-1/2"}`}
+        className="absolute top-1/2 right-3 flex -translate-y-1/2 items-center gap-2"
       >
         {actions}
         <Button
@@ -319,11 +321,12 @@ export function EditorLayout({
       ref={headerElement}
       data-canvas-header
       data-header-layout={headerLayout}
+      data-bare-zoom={headerLayout === "bare" ? true : undefined}
       data-brand-placement={brandInHeader ? "header" : "aside"}
-      data-compact-zoom={compactZoom ? true : undefined}
+      style={{ "--header-zoom-width": `${headerZoomWidth}px` } as CSSProperties}
       data-compact-export={compactExport ? true : undefined}
-      data-overlay-scroll={headerLayout === "scroll" ? "none" : "x"}
-      className={`group/header relative col-span-full flex min-h-19 w-full shrink-0 overflow-y-hidden ${headerLayout === "scroll" ? "items-stretch overflow-x-hidden" : "items-center overflow-x-auto py-3"} border-0 border-b border-solid border-ui-border bg-ui-background [&_button:focus-visible]:-outline-offset-3!`}
+      data-overlay-scroll="none"
+      className="group/header relative col-span-full flex min-h-19 w-full shrink-0 items-center overflow-hidden border-0 border-b border-solid border-ui-border bg-ui-background py-3 [&_button:focus-visible]:-outline-offset-3!"
     >
       {canvasActions}
     </header>

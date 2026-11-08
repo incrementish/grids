@@ -43,7 +43,7 @@ import {
 
 const rangeFieldStyles = cva("flex", {
   variants: {
-    layout: { stacked: "flex-col gap-1", inline: "items-center gap-3" },
+    layout: { stacked: "flex-col gap-0", inline: "items-center gap-3" },
   },
   defaultVariants: { layout: "stacked" },
 });
@@ -93,7 +93,7 @@ export function RangeField({
     >
       <Label
         htmlFor={id}
-        className={layout === "inline" ? "shrink-0" : "field-label"}
+        className={layout === "inline" ? "shrink-0" : "field-label px-2"}
       >
         {label}
         {layout === "stacked" && <> {result}</>}

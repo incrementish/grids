@@ -1537,9 +1537,23 @@ test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
   const checkZoomLayout = async () => {
     const field = zoom.locator("..");
     await expect(field).toHaveClass(/flex-col/);
-    await expect(field).toHaveCSS("row-gap", "4px");
+    await expect(field).toHaveCSS("row-gap", "0px");
     await expect(zoom).toHaveCSS("height", "32px");
-    await expect(field.locator("label")).toHaveClass("field-label");
+    await expect(field.locator("label")).toHaveClass(/field-label/);
+    const bare =
+      (await page
+        .locator("[data-canvas-header]")
+        .getAttribute("data-bare-zoom")) === "true";
+    await expect(field.locator("label")).toHaveCSS(
+      "padding-left",
+      bare ? "0px" : "8px",
+    );
+    await expect(field.locator("label")).toHaveCSS(
+      "padding-right",
+      bare ? "0px" : "8px",
+    );
+    if (bare)
+      await expect(field.locator("label")).toHaveCSS("position", "absolute");
     await expect
       .poll(() =>
         field.evaluate((element) => {
@@ -1555,8 +1569,12 @@ test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
             .querySelector("#export-grid-header")
             .getBoundingClientRect();
           return (
-            label.bottom <= slider.top &&
-            Math.abs(output.right - field.right) < 1 &&
+            (element.closest("header").hasAttribute("data-bare-zoom")
+              ? Math.abs(
+                  slider.y + slider.height / 2 - header.y - header.height / 2,
+                ) < 1
+              : label.bottom <= slider.top &&
+                Math.abs(output.right - field.right + 8) < 1) &&
             Math.abs(
               field.y + field.height / 2 - header.y - header.height / 2,
             ) < 1 &&
@@ -1657,17 +1675,65 @@ test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
       ),
     ).toBe(true);
   }
-  for (const [width, zoomWidth, compactExport, brandVisible] of [
-    [450, 80, false, true],
-    [449, 160, true, true],
-    [400, 160, true, true],
-    [320, 80, true, true],
-    [280, 80, true, false],
-    [260, 80, true, false],
-    [1440, 160, false, true],
+  const headerSizes = [
+    [1440, 160, false],
+    [560, 160, false],
+    [500, 160, false],
+    [450, 160, true],
+    [449, 160, true],
+    [400, 160, true],
+    [390, 160, true],
+    [320, null, true],
+    [310, null, true],
+    [300, null, true],
+    [280, null, true],
+    [270, null, true],
+    [260, null, true],
+    [250, null, true],
+    [240, null, true],
+    [220, null, true],
+  ];
+  for (const [width, zoomWidth, compactExport] of [
+    ...headerSizes,
+    ...[...headerSizes].reverse(),
   ]) {
     await setEditorViewport(page, { width, height: 844 });
-    await expect(zoom.locator("..")).toHaveCSS("width", `${zoomWidth}px`);
+    if (zoomWidth === null) {
+      const sizing = await zoom.evaluate((element) => {
+        const header = element.closest("header");
+        const brand = header.querySelector(".brand").getBoundingClientRect();
+        const actions = header
+          .querySelector('[role="group"]')
+          .getBoundingClientRect();
+        const controls = header.querySelector("[data-canvas-controls]");
+        const gap = parseFloat(getComputedStyle(controls).columnGap);
+        return {
+          actual: element.parentElement.getBoundingClientRect().width,
+          expected: Math.min(
+            160,
+            Math.max(32, actions.left - brand.right - gap * 2),
+          ),
+        };
+      });
+      expect(sizing.actual).toBeCloseTo(sizing.expected, 1);
+      expect(sizing.actual).toBeGreaterThan(32);
+      expect(sizing.actual).toBeLessThan(160);
+      await expect(page.locator("[data-canvas-header]")).toHaveAttribute(
+        "data-header-layout",
+        sizing.expected < 80 ? "bare" : "shifted",
+      );
+    } else {
+      await expect(zoom.locator("..")).toHaveCSS("width", `${zoomWidth}px`);
+    }
+    const bare =
+      (await page
+        .locator("[data-canvas-header]")
+        .getAttribute("data-bare-zoom")) === "true";
+    await expect(zoom.locator("..")).toHaveCSS(
+      "min-width",
+      bare ? "32px" : "80px",
+    );
+    await expect(zoom.locator("..")).toHaveCSS("max-width", "160px");
     await expect
       .poll(() =>
         page
@@ -1684,12 +1750,65 @@ test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
     );
     await expect(page.locator("[data-header-brand]")).toHaveAttribute(
       "aria-hidden",
-      String(!brandVisible),
+      "false",
     );
-    if (brandVisible)
-      await expect(page.locator("[data-header-brand] a")).toBeVisible();
-    else await expect(page.locator("[data-header-brand] a")).not.toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Gridz", exact: true }),
+    ).toBeInViewport({ ratio: 1 });
+    await expect(sidebarToggle(page, true)).toBeInViewport({ ratio: 1 });
+    expect(
+      await zoom.evaluate((element) => {
+        const header = element.closest("header");
+        const brand = header.querySelector(".brand");
+        const brandBounds = brand.getBoundingClientRect();
+        const controls = header.querySelector("[data-canvas-controls]");
+        const controlsBounds = element.parentElement.getBoundingClientRect();
+        const actionsBounds = header
+          .querySelector('[role="group"]')
+          .getBoundingClientRect();
+        const gap = parseFloat(getComputedStyle(controls).columnGap);
+        return {
+          logoHit:
+            document
+              .elementFromPoint(
+                brandBounds.x + brandBounds.width / 2,
+                brandBounds.y + brandBounds.height / 2,
+              )
+              ?.closest(".brand") === brand,
+          separated: controlsBounds.left + 0.1 >= brandBounds.right + gap,
+          besideExport:
+            Math.abs(actionsBounds.left - controlsBounds.right - gap) < 1,
+          noScroll:
+            controls.scrollWidth <= controls.clientWidth &&
+            header.scrollWidth <= header.clientWidth,
+          transparentControls:
+            getComputedStyle(controls).backgroundColor === "rgba(0, 0, 0, 0)",
+        };
+      }),
+    ).toEqual({
+      logoHit: true,
+      separated: true,
+      besideExport: true,
+      noScroll: true,
+      transparentControls: true,
+    });
     await checkZoomLayout();
+    const frameStates = await zoom.evaluate(async (element) => {
+      const header = element.closest("header");
+      const states = [];
+      for (let frame = 0; frame < 8; frame++) {
+        await new Promise(requestAnimationFrame);
+        states.push(
+          [
+            getComputedStyle(element.parentElement).width,
+            header.dataset.compactExport ?? "false",
+            header.dataset.headerLayout,
+          ].join("/"),
+        );
+      }
+      return [...new Set(states)];
+    });
+    expect(frameStates).toHaveLength(1);
   }
   await setEditorViewport(page, { width: 390, height: 844 });
   await page.screenshot({
@@ -1826,17 +1945,13 @@ test("brand keyboard focus rings only the rounded icon", async ({
   page,
 }, testInfo) => {
   await page.goto("./");
-  for (const width of [1440, 260, 390]) {
+  for (const width of [1440, 260, 220, 390]) {
     await setEditorViewport(page, { width, height: 844 });
     const brand = page.getByRole("link", { name: "Gridz", exact: true });
-    if (width === 260) {
-      await expect(page.locator("[data-header-brand]")).toHaveAttribute(
-        "aria-hidden",
-        "true",
-      );
-      await expect(brand).toHaveCount(0);
-      continue;
-    }
+    await expect(brand.locator(".brand-mark")).toHaveCSS("width", "44px");
+    await expect(brand.locator(".brand-mark")).toHaveCSS("height", "44px");
+    await expect(sidebarToggle(page, true)).toHaveCSS("width", "44px");
+    await expect(sidebarToggle(page, true)).toHaveCSS("height", "44px");
     await tabThroughTo(page, brand);
     await expect(brand).toHaveAttribute("href", "./");
     expect(
