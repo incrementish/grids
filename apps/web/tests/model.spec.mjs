@@ -1861,6 +1861,10 @@ test("translations render valid ICU messages, plurals and interpolated values", 
         expect(
           typeof i18n.t(fullKey, {
             count: 2,
+            gap: 12.5,
+            padding: 62.5,
+            row: 2,
+            column: 3,
             value1: "Image {title}",
             value2: "Square",
             value3: 3,

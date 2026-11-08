@@ -490,6 +490,8 @@ async function selectField(page, id, value) {
   if ((await option.getAttribute("aria-selected")) === "true")
     await page.keyboard.press("Escape");
   else await option.click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await expect(page.locator(`#${id}`)).toBeFocused();
 }
 
 async function editHeading(page, value) {
@@ -877,7 +879,7 @@ test("overlay scrollbars cover sidebar, tab rail, modal and dropdown overflow", 
 }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 306 });
   await page.goto("./");
-  await openSidebarPanel(page, "Reset");
+  await openSidebarPanel(page, "Design");
   const aside = page.locator("[data-editor-sidebar]");
   const panels = aside.locator("[data-sidebar-panels]");
   const panelControls = aside.locator("[data-panel-controls]");
@@ -3330,7 +3332,7 @@ nativeTouchTest(
     await page.goto("./");
     await useComicExample(page);
     for (const dimension of ["column", "row"])
-      for (let count = 0; count < 4; count++)
+      for (let count = 0; count < 6; count++)
         await page
           .getByRole("button", { name: `Add ${dimension}`, exact: true })
           .click();
@@ -3647,11 +3649,15 @@ test("card border controls preserve geometry and export matching enabled and dis
   expect(await first.boundingBox()).toEqual(geometry);
   await first.locator("[data-card-image]").hover();
   await expect(first).toHaveAttribute("data-image-hovered", "");
-  expect(
-    await first
-      .locator("[data-cell-image-frame]")
-      .evaluate((element) => getComputedStyle(element).backgroundColor),
-  ).not.toBe("rgba(0, 0, 0, 0)");
+  const hoverFrame = first.locator("[data-cell-image-frame]");
+  await expect(hoverFrame).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(hoverFrame).toHaveCSS("outline-style", "solid");
+  await expect(hoverFrame).toHaveCSS("outline-width", "1px");
+  await expect
+    .poll(() =>
+      hoverFrame.evaluate((element) => getComputedStyle(element).outlineColor),
+    )
+    .not.toBe("rgba(0, 0, 0, 0)");
   for (const pixel of await exportPixels())
     expect(pixel).not.toEqual([227, 69, 103, 255]);
   await expect
@@ -6961,12 +6967,18 @@ for (const viewportWidth of [1440, 780]) {
       .first()
       .boundingBox();
     const bottomY = Math.floor(headingBounds.y - picture.y - 5);
-    await images.nth(0).hover({ position: { x: 8, y: bottomY } });
+    const bottomX = picture.width / 2;
+    await images.nth(0).hover({ position: { x: bottomX, y: bottomY } });
     expect(
-      await images.nth(0).evaluate((button, y) => {
-        const bounds = button.getBoundingClientRect();
-        return document.elementFromPoint(bounds.x + 8, bounds.y + y) === button;
-      }, bottomY),
+      await images.nth(0).evaluate(
+        (button, { x, y }) => {
+          const bounds = button.getBoundingClientRect();
+          return (
+            document.elementFromPoint(bounds.x + x, bounds.y + y) === button
+          );
+        },
+        { x: bottomX, y: bottomY },
+      ),
     ).toBe(true);
 
     const source = await images.nth(0).locator("img").boundingBox();
@@ -7008,7 +7020,7 @@ for (const viewportWidth of [1440, 780]) {
       };
     });
     await images.nth(0).dragTo(images.nth(2), {
-      sourcePosition: { x: 8, y: bottomY },
+      sourcePosition: { x: bottomX, y: bottomY },
     });
     await expect(page.locator(".grid-cell").nth(0).locator("img")).toHaveCount(
       0,
@@ -7208,6 +7220,14 @@ test("resizing across large and narrow screens preserves removed images and capt
     .first()
     .dragTo(page.locator(".cell-image-button").nth(1));
   await setEditorViewport(page, { width: 260, height: 844 });
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-canvas-viewport]")
+        .evaluate((viewport) => viewport.scrollWidth > viewport.clientWidth),
+    )
+    .toBe(false);
+  await page.getByRole("slider", { name: "Zoom", exact: true }).fill("150");
   await expect
     .poll(() =>
       page
