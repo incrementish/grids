@@ -69,8 +69,8 @@ test.beforeAll(async () => {
 test("refined dark defaults keep captions readable without restyling saved grids or starter themes", () => {
   const workspace = model.makeWorkspace();
   expect(workspace.grid).toMatchObject({
-    rows: 3,
-    columns: 3,
+    rows: 2,
+    columns: 2,
     imageAspect: "portrait",
     captionPlacement: "overlay",
     captionAlignment: "bottom",
@@ -85,6 +85,12 @@ test("refined dark defaults keep captions readable without restyling saved grids
     cellBackgroundColor: "#23272b",
     cellTextColor: "#eef1f3",
   });
+  expect(workspace.grid.cells).toHaveLength(4);
+  expect(
+    workspace.grid.cells.every(
+      (cell) => cell.assetId === null && cell.title === "",
+    ),
+  ).toBe(true);
   const luminance = (color) => {
     const channels = color.match(/[0-9a-f]{2}/gi).map((part) => {
       const value = parseInt(part, 16) / 255;

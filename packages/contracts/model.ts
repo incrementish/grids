@@ -535,8 +535,8 @@ export const makeBoard = (name: string, assets: Asset[] = []): Board => ({
   captionPlacement: "overlay",
   captionAlignment: "bottom",
   captionOverlayColor: "#111315",
-  rows: 3,
-  columns: 3,
+  rows: 2,
+  columns: 2,
   gap: 24,
   canvasPadding: 36,
   background: "#17191b",
@@ -544,7 +544,7 @@ export const makeBoard = (name: string, assets: Asset[] = []): Board => ({
   headingTextColor: "#eef1f3",
   cellBackgroundColor: "#23272b",
   cellTextColor: "#eef1f3",
-  cells: Array.from({ length: 9 }, (_, index) => makeCell(assets[index])),
+  cells: Array.from({ length: 4 }, (_, index) => makeCell(assets[index])),
   overflow: [],
 });
 export function resizeBoard(

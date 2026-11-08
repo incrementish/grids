@@ -10543,12 +10543,16 @@ test("single grid starts with refined dark defaults and uploaded content persist
   await expect(
     page.locator("#add-board, #board-tabs, #export-all"),
   ).toHaveCount(0);
-  await expect(page.locator(".grid-cell")).toHaveCount(9);
+  await expect(page.locator(".grid-cell")).toHaveCount(4);
   await expect(page.locator(".asset")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: /^Edit grid heading: / }),
   ).toHaveText("Add heading");
-  expect((await savedWorkspace(page)).grid.publisher).toBe("none");
+  expect((await savedWorkspace(page)).grid).toMatchObject({
+    publisher: "none",
+    rows: 2,
+    columns: 2,
+  });
   await openDesignControls(page, "heading-font");
   await expect(page.locator("#heading-font")).toHaveText("Manrope");
   await openDesignControls(page, "cell-font");
@@ -10588,7 +10592,7 @@ test("single grid starts with refined dark defaults and uploaded content persist
       bitmap.close();
       return size;
     }, bytes),
-  ).toEqual({ width: 480, height: 630 });
+  ).toEqual({ width: 324, height: 424 });
   await page.locator("#replace-upload").setInputFiles({
     name: "personal.svg",
     mimeType: "image/svg+xml",
@@ -10605,6 +10609,25 @@ test("single grid starts with refined dark defaults and uploaded content persist
   await expect(page.locator(".cell-heading").first()).toHaveValue(
     "Keep my own caption",
   );
+  const existing = {
+    ...snapshot,
+    grid: {
+      ...snapshot.grid,
+      rows: 3,
+      columns: 3,
+      cells: [
+        ...snapshot.grid.cells,
+        ...Array.from({ length: 5 }, () => ({
+          ...snapshot.grid.cells[1],
+          id: crypto.randomUUID(),
+        })),
+      ],
+    },
+  };
+  await localDatabase(page, "write", existing);
+  await reloadWorkspace(page);
+  await expect(page.locator(".grid-cell")).toHaveCount(9);
+  expect(await savedWorkspace(page)).toEqual(existing);
   expect(errors).toEqual([]);
 });
 
