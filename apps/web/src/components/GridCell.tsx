@@ -606,12 +606,6 @@ export function GridCell({
                       !library?.disabled &&
                       !library?.onSelect;
                     if (event.pointerType === "touch") {
-                      if (
-                        library?.onSelect &&
-                        !previewOnly &&
-                        !(coarsePointer && asset?.provenance)
-                      )
-                        event.preventDefault();
                       touchDragged.current = false;
                       touchTapped.current = false;
                       touchStart.current = {
@@ -640,16 +634,6 @@ export function GridCell({
                     touchStart.current = null;
                     touchTapped.current = true;
                     touchOpenedAt.current = Date.now();
-                    if (
-                      library?.onSelect &&
-                      !previewOnly &&
-                      !(coarsePointer && asset?.provenance)
-                    ) {
-                      event.preventDefault();
-                      setHoverTools(false);
-                      if (!library.disabled) library.onSelect();
-                      return;
-                    }
                     event.currentTarget.click();
                   }}
                   onMouseDownCapture={(event) => event.stopPropagation()}

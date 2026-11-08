@@ -11825,20 +11825,21 @@ touchTest(
     );
     await expect(picker.getByRole("img")).toHaveCount(3);
     await expect(page.locator(".grid-cell img")).toHaveCount(0);
-    await page.evaluate(() => {
-      window.__pickerTapTrace = { syntheticClicks: 0, thumbnailFocus: 0 };
-      window.__pickerOriginalClick = HTMLElement.prototype.click;
-      HTMLElement.prototype.click = function () {
-        if (this.matches("[data-library-thumbnail]"))
-          window.__pickerTapTrace.syntheticClicks++;
-        return window.__pickerOriginalClick.call(this);
-      };
-      window.__pickerFocusListener = (event) => {
-        if (event.target.matches("[data-library-thumbnail]"))
-          window.__pickerTapTrace.thumbnailFocus++;
-      };
-      document.addEventListener("focusin", window.__pickerFocusListener);
-    });
+    const tapHighlights = await picker
+      .getByRole("button", { name: "Use Picker 0", exact: true })
+      .evaluate((button) => {
+        const elements = [...button.querySelectorAll("*")];
+        for (let ancestor = button; ancestor; ancestor = ancestor.parentElement)
+          elements.push(ancestor);
+        return elements.map((element) => ({
+          tag: element.tagName,
+          color: getComputedStyle(element).getPropertyValue(
+            "-webkit-tap-highlight-color",
+          ),
+        }));
+      });
+    for (const { tag, color } of tapHighlights)
+      expect(color, `native tap highlight on ${tag}`).toBe("rgba(0, 0, 0, 0)");
     await picker
       .getByRole("button", { name: "Use Picker 0", exact: true })
       .tap();
@@ -11847,16 +11848,6 @@ touchTest(
       page.locator(".grid-cell").first().locator("img"),
     ).toHaveAttribute("alt", "Picker 0");
     await expect(page.locator(".grid-cell img")).toHaveCount(1);
-    const tapTrace = await page.evaluate(() => {
-      HTMLElement.prototype.click = window.__pickerOriginalClick;
-      document.removeEventListener("focusin", window.__pickerFocusListener);
-      const trace = window.__pickerTapTrace;
-      delete window.__pickerOriginalClick;
-      delete window.__pickerFocusListener;
-      delete window.__pickerTapTrace;
-      return trace;
-    });
-    expect(tapTrace).toEqual({ syntheticClicks: 0, thumbnailFocus: 0 });
     await page.screenshot({
       path: testInfo.outputPath("picker-after-touch-selection.png"),
     });

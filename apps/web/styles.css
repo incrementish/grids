@@ -176,6 +176,7 @@ html:has(#headlessui-portal-root [role="dialog"][aria-modal="true"]) {
   textarea {
     font: inherit;
   }
+  html,
   button,
   a,
   label,
