@@ -11805,6 +11805,20 @@ touchTest(
     );
     await expect(picker.getByRole("img")).toHaveCount(3);
     await expect(page.locator(".grid-cell img")).toHaveCount(0);
+    await page.evaluate(() => {
+      window.__pickerTapTrace = { syntheticClicks: 0, thumbnailFocus: 0 };
+      window.__pickerOriginalClick = HTMLElement.prototype.click;
+      HTMLElement.prototype.click = function () {
+        if (this.matches("[data-library-thumbnail]"))
+          window.__pickerTapTrace.syntheticClicks++;
+        return window.__pickerOriginalClick.call(this);
+      };
+      window.__pickerFocusListener = (event) => {
+        if (event.target.matches("[data-library-thumbnail]"))
+          window.__pickerTapTrace.thumbnailFocus++;
+      };
+      document.addEventListener("focusin", window.__pickerFocusListener);
+    });
     await picker
       .getByRole("button", { name: "Use Picker 0", exact: true })
       .tap();
@@ -11813,7 +11827,62 @@ touchTest(
       page.locator(".grid-cell").first().locator("img"),
     ).toHaveAttribute("alt", "Picker 0");
     await expect(page.locator(".grid-cell img")).toHaveCount(1);
+    const tapTrace = await page.evaluate(() => {
+      HTMLElement.prototype.click = window.__pickerOriginalClick;
+      document.removeEventListener("focusin", window.__pickerFocusListener);
+      const trace = window.__pickerTapTrace;
+      delete window.__pickerOriginalClick;
+      delete window.__pickerFocusListener;
+      delete window.__pickerTapTrace;
+      return trace;
+    });
+    expect(tapTrace).toEqual({ syntheticClicks: 0, thumbnailFocus: 0 });
+    await page.screenshot({
+      path: testInfo.outputPath("picker-after-touch-selection.png"),
+    });
     await openPicker();
+    await setEditorViewport(page, { width: 390, height: 360 });
+    const scrollFrame = picker.locator("[data-modal-scroll]");
+    const thumbnail = picker.getByRole("button", {
+      name: "Use Picker 0",
+      exact: true,
+    });
+    await expect(thumbnail).toHaveCSS("touch-action", "auto");
+    await thumbnail.scrollIntoViewIfNeeded();
+    const thumbnailBounds = await thumbnail.boundingBox();
+    const frameBounds = await scrollFrame.boundingBox();
+    const initialScroll = await scrollFrame.evaluate(
+      (element) => element.scrollTop,
+    );
+    const touch = await page.context().newCDPSession(page);
+    const startX = thumbnailBounds.x + thumbnailBounds.width / 2;
+    const startY = Math.min(
+      thumbnailBounds.y + thumbnailBounds.height - 12,
+      frameBounds.y + frameBounds.height - 20,
+    );
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: startX, y: startY }],
+    });
+    for (let step = 1; step <= 6; step++) {
+      await touch.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: startX, y: startY - step * 20 }],
+      });
+    }
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await touch.detach();
+    await expect
+      .poll(() => scrollFrame.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(initialScroll);
+    await expect(picker).toBeVisible();
+    await expect(
+      page.locator(".grid-cell").first().locator("img"),
+    ).toHaveAttribute("alt", "Picker 0");
+    await setEditorViewport(page, { width: 390, height: 844 });
     await expect(picker.getByRole("img")).toHaveCount(3);
     await expect(
       picker.getByRole("tab", { name: "Library", exact: true }),
