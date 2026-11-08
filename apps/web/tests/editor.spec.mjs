@@ -1657,14 +1657,14 @@ test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
       ),
     ).toBe(true);
   }
-  for (const [width, zoomWidth, compactExport] of [
-    [450, 160, false],
-    [449, 160, true],
-    [400, 160, true],
-    [320, 160, true],
-    [280, 80, true],
-    [260, 80, true],
-    [1440, 160, false],
+  for (const [width, zoomWidth, compactExport, brandVisible] of [
+    [450, 80, false, true],
+    [449, 160, true, true],
+    [400, 160, true, true],
+    [320, 80, true, true],
+    [280, 80, true, false],
+    [260, 80, true, false],
+    [1440, 160, false, true],
   ]) {
     await setEditorViewport(page, { width, height: 844 });
     await expect(zoom.locator("..")).toHaveCSS("width", `${zoomWidth}px`);
@@ -1682,7 +1682,13 @@ test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
       "position",
       compactExport ? "absolute" : "static",
     );
-    await expect(page.locator("[data-header-brand] a")).toBeVisible();
+    await expect(page.locator("[data-header-brand]")).toHaveAttribute(
+      "aria-hidden",
+      String(!brandVisible),
+    );
+    if (brandVisible)
+      await expect(page.locator("[data-header-brand] a")).toBeVisible();
+    else await expect(page.locator("[data-header-brand] a")).not.toBeVisible();
     await checkZoomLayout();
   }
   await setEditorViewport(page, { width: 390, height: 844 });
@@ -1820,9 +1826,17 @@ test("brand keyboard focus rings only the rounded icon", async ({
   page,
 }, testInfo) => {
   await page.goto("./");
-  for (const width of [1440, 390, 260]) {
+  for (const width of [1440, 260, 390]) {
     await setEditorViewport(page, { width, height: 844 });
     const brand = page.getByRole("link", { name: "Gridz", exact: true });
+    if (width === 260) {
+      await expect(page.locator("[data-header-brand]")).toHaveAttribute(
+        "aria-hidden",
+        "true",
+      );
+      await expect(brand).toHaveCount(0);
+      continue;
+    }
     await tabThroughTo(page, brand);
     await expect(brand).toHaveAttribute("href", "./");
     expect(
@@ -2404,7 +2418,7 @@ test("appearance choices support keyboard selection on narrow and desktop screen
 
 test("header actions open export and restore sidebar settings and focus", async ({
   page,
-}) => {
+}, testInfo) => {
   await setEditorViewport(page, { width: 1440, height: 900 });
   await page.goto("./");
   const header = page.locator("[data-canvas-header]");
@@ -2417,26 +2431,88 @@ test("header actions open export and restore sidebar settings and focus", async 
   await page.locator("#background-value").fill("#112233");
   await openDesignControls(page, "background-value");
   await page.locator("#background-value").press("Enter");
-  await closeSidebarPanel(page);
-  const show = header.getByRole("button", {
-    name: "Show sidebar",
-    exact: true,
-  });
-  await expect(show).toBeFocused();
-  await show.click();
-  await expect(sidebar).toBeVisible();
-  await openDesignControls(page, "background-value");
-  await expect(page.locator("#background-value")).toHaveValue("#112233");
   const exportButton = header.getByRole("button", {
     name: "Export grid",
     exact: true,
   });
-  await exportButton.click();
-  const dialog = page.getByRole("dialog", { name: "Export grid", exact: true });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(exportButton).toBeFocused();
+  for (const width of [1440, 390, 260, 1440]) {
+    await setEditorViewport(page, { width, height: 844 });
+    await expect(sidebar).toHaveCount(1);
+    await expect(
+      sidebar.getByRole("tab", { name: "Design", exact: true }),
+    ).toBeDisabled();
+    const close = sidebarToggle(page, true);
+    await expect(close).toBeVisible();
+    await expect(close).toHaveAttribute(
+      "aria-controls",
+      await sidebar.getAttribute("id"),
+    );
+    await expect(close.locator("svg")).toHaveCSS(
+      "rotate",
+      width < 640 ? "90deg" : "none",
+    );
+    const workspace = page.locator("[data-workspace-scroll]");
+    const openHeight = (await workspace.boundingBox()).height;
+    const panelHeight = (await sidebar.boundingBox()).height;
+    await exportButton.focus();
+    await page.keyboard.press("Tab");
+    await expect(close).toBeFocused();
+    await close.press("Enter");
+    await expect(sidebar).toHaveCount(0);
+    const show = sidebarToggle(page, false);
+    await expect(show).toBeFocused();
+    await expect(show.locator("svg")).toHaveCSS(
+      "rotate",
+      width < 640 ? "90deg" : "none",
+    );
+    if (width < 640) {
+      await expect(page.locator("[data-sidebar-track]")).toHaveCSS(
+        "height",
+        "0px",
+      );
+      expect((await workspace.boundingBox()).height).toBeCloseTo(
+        openHeight + panelHeight,
+        0,
+      );
+      await expect(page.locator("[data-sidebar-track]")).not.toHaveAttribute(
+        "data-sidebar-open",
+      );
+    }
+    await page.screenshot({
+      path: testInfo.outputPath(`panel-closed-${width}.png`),
+    });
+    if (width === 390) {
+      await setEditorViewport(page, { width: 1440, height: 844 });
+      await expect(sidebar).toHaveCount(0);
+      await expect(show.locator("svg")).toHaveCSS("rotate", "none");
+      await setEditorViewport(page, { width, height: 844 });
+      await expect(sidebar).toHaveCount(0);
+      await expect(show.locator("svg")).toHaveCSS("rotate", "90deg");
+    }
+    await page.reload();
+    await expect(sidebar).toHaveCount(0);
+    await expect(show).toBeVisible();
+    await tabThroughTo(page, show);
+    await show.press("Space");
+    await expect(sidebar).toBeVisible();
+    await expect(
+      sidebar.getByRole("tab", { name: "Design", exact: true }),
+    ).toBeDisabled();
+    await openDesignControls(page, "background-value");
+    await expect(page.locator("#background-value")).toHaveValue("#112233");
+    await page.screenshot({
+      path: testInfo.outputPath(`panel-open-${width}.png`),
+    });
+    await exportButton.click();
+    const dialog = page.getByRole("dialog", {
+      name: "Export grid",
+      exact: true,
+    });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(exportButton).toBeFocused();
+  }
 });
 
 test("sidebar keyboard navigation skips selected tabs and preserves settings across toggles", async ({

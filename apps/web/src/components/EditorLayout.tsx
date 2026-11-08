@@ -288,26 +288,28 @@ export function EditorLayout({
         className={`flex items-center gap-2 ${headerLayout === "scroll" ? "relative my-3 shrink-0" : "absolute top-1/2 right-3 -translate-y-1/2"}`}
       >
         {actions}
-        {!compact && (
-          <Button
-            presentation="icon"
-            title={t(
-              sidebarOpen ? "editor.closeSidebar" : "editor.showSidebar",
-            )}
-            aria-label={t(
-              sidebarOpen ? "editor.closeSidebar" : "editor.showSidebar",
-            )}
-            aria-expanded={sidebarOpen}
-            aria-controls={panelsId}
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-          >
-            {sidebarOpen ? (
-              <PanelRightClose aria-hidden="true" className="size-5!" />
-            ) : (
-              <PanelRightOpen aria-hidden="true" className="size-5!" />
-            )}
-          </Button>
-        )}
+        <Button
+          presentation="icon"
+          title={t(sidebarOpen ? "editor.closeSidebar" : "editor.showSidebar")}
+          aria-label={t(
+            sidebarOpen ? "editor.closeSidebar" : "editor.showSidebar",
+          )}
+          aria-expanded={sidebarOpen}
+          aria-controls={panelsId}
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+        >
+          {sidebarOpen ? (
+            <PanelRightClose
+              aria-hidden="true"
+              className={compact ? "size-5! rotate-90" : "size-5!"}
+            />
+          ) : (
+            <PanelRightOpen
+              aria-hidden="true"
+              className={compact ? "size-5! rotate-90" : "size-5!"}
+            />
+          )}
+        </Button>
       </div>
       {status}
     </div>
@@ -341,7 +343,7 @@ export function EditorLayout({
         }
       >
         <AnimatePresence initial={false}>
-          {(compact || sidebarOpen) && (
+          {sidebarOpen && (
             <MotionDiv
               key={compact ? "sidebar-compact" : "sidebar"}
               initial={compact ? { height: 0 } : { x: "100%" }}
