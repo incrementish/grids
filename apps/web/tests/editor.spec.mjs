@@ -11942,6 +11942,147 @@ touchTest(
   },
 );
 
+touchTest(
+  "picker immediately reuses uploaded library previews across sizes and reopening",
+  async ({ page }) => {
+    await page.goto("./");
+    await page.locator("#upload").setInputFiles(
+      Array.from({ length: 10 }, (_, index) => ({
+        name: `Cached ${index}.svg`,
+        mimeType: "image/svg+xml",
+        buffer: Buffer.from(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500"><rect width="500" height="500" fill="#40b4aa"/></svg>',
+        ),
+      })),
+    );
+    const originals = {};
+    for (let index = 0; index < 10; index++) {
+      const image = page.locator("#asset-library").getByRole("img", {
+        name: `Cached ${index}`,
+        exact: true,
+      });
+      await image.scrollIntoViewIfNeeded();
+      await expect
+        .poll(() =>
+          image.evaluate(
+            (element) => element.complete && element.naturalWidth > 0,
+          ),
+        )
+        .toBe(true);
+      originals[`Cached ${index}`] = await image.getAttribute("src");
+    }
+    await page.evaluate(() => {
+      const original = HTMLCanvasElement.prototype.toBlob;
+      const pending = [];
+      HTMLCanvasElement.prototype.toBlob = function (...args) {
+        pending.push(() => original.apply(this, args));
+      };
+      window.restorePreviewEncoding = () => {
+        HTMLCanvasElement.prototype.toBlob = original;
+        for (const finish of pending) finish();
+      };
+    });
+    const picker = page.getByRole("dialog", {
+      name: "Choose image",
+      exact: true,
+    });
+    for (let opening = 0; opening < 2; opening++) {
+      await page
+        .locator(".cell-image-button")
+        .first()
+        .tap({ position: { x: 5, y: 5 } });
+      await expect(picker).toBeVisible();
+      for (let index = 0; index < 10; index++) {
+        const image = picker.getByRole("img", {
+          name: `Cached ${index}`,
+          exact: true,
+        });
+        await image.scrollIntoViewIfNeeded();
+        await expect(image).toHaveAttribute(
+          "src",
+          originals[`Cached ${index}`],
+        );
+        await expect
+          .poll(() =>
+            image.evaluate(
+              (element) => element.complete && element.naturalWidth > 0,
+            ),
+          )
+          .toBe(true);
+        await expect(image.locator("..").getByRole("status")).toHaveCount(0);
+      }
+      await picker
+        .getByRole("button", { name: "Close dialog", exact: true })
+        .tap();
+      await expect(picker).toHaveCount(0);
+    }
+    await page.evaluate(() => window.restorePreviewEncoding());
+  },
+);
+
+touchTest(
+  "preview generation failure does not mark a usable picker image as failed",
+  async ({ page }) => {
+    await page.goto("./");
+    await page.evaluate(() => {
+      HTMLCanvasElement.prototype.toBlob = function (callback) {
+        callback(null);
+      };
+    });
+    await page
+      .locator(".cell-image-button")
+      .first()
+      .tap({ position: { x: 5, y: 5 } });
+    const picker = page.getByRole("dialog", {
+      name: "Choose image",
+      exact: true,
+    });
+    const chooser = page.waitForEvent("filechooser");
+    await picker.getByRole("button", { name: "Add images", exact: true }).tap();
+    await (
+      await chooser
+    ).setFiles(
+      ["Usable", "Other"].map((name) => ({
+        name: `${name}.svg`,
+        mimeType: "image/svg+xml",
+        buffer: Buffer.from(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500"><rect width="500" height="500" fill="#40b4aa"/></svg>',
+        ),
+      })),
+    );
+    const image = picker.getByRole("img", { name: "Usable", exact: true });
+    await expect
+      .poll(() =>
+        image.evaluate(
+          (element) => element.complete && element.naturalWidth === 500,
+        ),
+      )
+      .toBe(true);
+    await expect(
+      picker.getByText(
+        "Image unavailable. Check your connection or choose another image.",
+      ),
+    ).toHaveCount(0);
+    await expect(image.locator("..").getByRole("status")).toHaveCount(0);
+    await picker.getByRole("button", { name: "Use Usable", exact: true }).tap();
+    await expect(picker).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page
+          .locator(".grid-cell")
+          .first()
+          .locator("img")
+          .evaluate(
+            (element) => element.complete && element.naturalWidth === 500,
+          ),
+      )
+      .toBe(true);
+    await expect(
+      page.locator(".grid-cell").first().getByRole("status"),
+    ).toHaveCount(0);
+  },
+);
+
 test("library cards support mouse and touch copying on touch-capable desktops", async ({
   browser,
 }, testInfo) => {

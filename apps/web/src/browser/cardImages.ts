@@ -4,6 +4,10 @@ import { loadImage } from "../export";
 type Preview = { src: string; width: number; height: number };
 type Entry = {
   promise: Promise<Preview>;
+  original: string;
+  cropKey: string;
+  aspect: number;
+  preview?: Preview;
   users: number;
   bytes: number;
   src?: string;
@@ -32,14 +36,35 @@ export function requestCardImage(
   width: number,
   height: number,
   crop?: ImageCrop,
+  aspect = width / height,
 ) {
-  const key = JSON.stringify([original, width, height, crop]);
+  const cropKey = JSON.stringify(crop) ?? "";
+  const compatible = [...previews.values()].filter(
+    (candidate) =>
+      candidate.original === original &&
+      candidate.cropKey === cropKey &&
+      candidate.aspect === aspect &&
+      candidate.preview,
+  );
+  const ready = compatible.find(
+    (candidate) =>
+      candidate.preview!.width >= width && candidate.preview!.height >= height,
+  );
+  const fallback = compatible.sort(
+    (first, second) => second.preview!.width - first.preview!.width,
+  )[0]?.preview;
+  const key = JSON.stringify([original, width, height, crop, aspect]);
   let entry = previews.get(key);
+  if (!entry && ready) entry = ready;
   if (entry) {
-    previews.delete(key);
-    previews.set(key, entry);
+    const existingKey = [...previews].find(([, value]) => value === entry)![0];
+    previews.delete(existingKey);
+    previews.set(existingKey, entry);
   } else {
     const pending: Entry = {
+      original,
+      cropKey,
+      aspect,
       users: 0,
       bytes: 0,
       promise: queue
@@ -58,7 +83,7 @@ export function requestCardImage(
               crop,
               image.width,
               image.height,
-              width / height,
+              aspect,
             );
             const scale =
               blob.type === "image/svg+xml"
@@ -91,30 +116,43 @@ export function requestCardImage(
                     ),
               ),
             );
+            if (!pending.users)
+              throw new DOMException("Preview no longer needed", "AbortError");
             pending.src = URL.createObjectURL(resized);
             pending.bytes = canvas.width * canvas.height * 4;
-            trimPreviews();
-            return {
+            pending.preview = {
               src: pending.src,
               width: canvas.width,
               height: canvas.height,
             };
+            trimPreviews();
+            return pending.preview;
           } finally {
             if (image instanceof ImageBitmap) image.close();
           }
         }),
     };
     queue = pending.promise;
-    pending.promise.catch(() => previews.delete(key));
+    pending.promise.catch(() => {
+      if (previews.get(key) === pending) previews.delete(key);
+    });
     previews.set(key, pending);
     entry = pending;
   }
   entry.users++;
   const current = entry;
+  const releaseFallback =
+    fallback && fallback.src !== current.src
+      ? retainCardImage(fallback.src)
+      : () => {};
   return {
+    preview: current.preview ?? fallback,
     promise: current.promise,
     release: () => {
+      releaseFallback();
       current.users--;
+      if (!current.users && !current.src && previews.get(key) === current)
+        previews.delete(key);
       trimPreviews();
     },
   };

@@ -279,15 +279,6 @@ export function GridCell({
         )
       : 0,
   );
-  const cropRectangle =
-    asset?.provenance && cell.crop && imageSize.width && imageSize.height
-      ? sourceRectangle(
-          cell.crop,
-          imageSize.width,
-          imageSize.height,
-          geometry.aspectRatio,
-        )
-      : null;
   const [previewWidth, setPreviewWidth] = useState(0);
   const [imageVisible, setImageVisible] = useState(false);
   const [displayImage, setDisplayImage] = useState<{
@@ -336,19 +327,24 @@ export function GridCell({
       previewWidth,
       Math.max(1, Math.round(previewWidth / geometry.aspectRatio)),
       cell.crop,
+      geometry.aspectRatio,
     );
+    const display = (src: string) => {
+      if (!disposed)
+        setDisplayImage({
+          original: asset.src,
+          crop: cropKey,
+          aspect: geometry.aspectRatio,
+          src,
+        });
+    };
+    if (request.preview) display(request.preview.src);
     request.promise
       .then((preview) => {
-        if (!disposed)
-          setDisplayImage({
-            original: asset.src,
-            crop: cropKey,
-            aspect: geometry.aspectRatio,
-            src: preview.src,
-          });
+        display(preview.src);
       })
       .catch(() => {
-        if (!disposed) setFailedImage(asset.src);
+        display(request.preview?.src ?? asset.src);
       });
     return () => {
       disposed = true;
@@ -375,6 +371,19 @@ export function GridCell({
     () => (imageSrc ? retainCardImage(imageSrc) : undefined),
     [imageSrc],
   );
+  const cropRectangle =
+    asset &&
+    (asset.provenance || imageSrc === asset.src) &&
+    cell.crop &&
+    imageSize.width &&
+    imageSize.height
+      ? sourceRectangle(
+          cell.crop,
+          imageSize.width,
+          imageSize.height,
+          geometry.aspectRatio,
+        )
+      : null;
   const overlay = gridStyle.captionPlacement === "overlay";
   const alignment = gridStyle.captionAlignment ?? "bottom";
   const toolTop =
@@ -808,7 +817,10 @@ export function GridCell({
                     onLoad={(event) => {
                       setFailedImage(null);
                       setLoadedImage(event.currentTarget.currentSrc);
-                      if (asset.provenance)
+                      if (
+                        asset.provenance ||
+                        event.currentTarget.currentSrc === asset.src
+                      )
                         setImageSize({
                           width: event.currentTarget.naturalWidth,
                           height: event.currentTarget.naturalHeight,
