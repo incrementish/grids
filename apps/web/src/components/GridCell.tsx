@@ -94,6 +94,7 @@ export function GridCell({
   index,
   gridId,
   gridStyle,
+  position,
   onPatch,
   onCrop,
   onClear,
@@ -118,6 +119,7 @@ export function GridCell({
   index: number;
   gridId: string;
   gridStyle: GridStyle;
+  position?: { row: number; column: number };
   onPatch: (patch: CellPatch) => void;
   onCrop?: (crop: ImageCrop, assetId: string) => void;
   onClear: () => void;
@@ -752,6 +754,11 @@ export function GridCell({
                   className={`${previewOnly ? "drag-preview-image" : "cell-image-button"} peer/image outline-none!`}
                   style={{ height: "100%", aspectRatio: geometry.aspectRatio }}
                   aria-label={t("cell.actions.addImage", { value1: index + 1 })}
+                  aria-describedby={
+                    position && !library && !previewOnly
+                      ? `cell-position-${cell.id}`
+                      : undefined
+                  }
                   title={
                     imageHovered
                       ? t("common.actions.addOrDropImages", { count: 1 })
@@ -763,6 +770,26 @@ export function GridCell({
                     else onUpload();
                   }}
                 >
+                  {position && !library && !previewOnly && (
+                    <span
+                      id={`cell-position-${cell.id}`}
+                      data-cell-position
+                      className="pointer-events-none absolute right-[6cqw] bottom-[3cqw] text-right text-[max(8px,9cqw)] leading-none font-normal tabular-nums"
+                      style={{
+                        color: contrastingColor(cardBackground, "#7e898a"),
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="block whitespace-nowrap"
+                      >
+                        {t("cell.position", position)}
+                      </span>
+                      <span className="sr-only">
+                        {t("cell.positionLabel", position)}
+                      </span>
+                    </span>
+                  )}
                   <span
                     className="empty-cell absolute inset-x-0 gap-[3cqw]! text-[8.5cqw]! [&_svg]:size-[min(18cqw,90cqh)]!"
                     style={{

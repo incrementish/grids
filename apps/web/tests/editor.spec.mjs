@@ -1017,6 +1017,118 @@ test("overlay scrollbars cover sidebar, tab rail, modal and dropdown overflow", 
   expect(missing).toEqual([]);
 });
 
+test("empty canvas cards identify their row and column without changing artwork", async ({
+  page,
+}, testInfo) => {
+  await page.goto("./");
+  await page.getByRole("button", { name: "Add row", exact: true }).click();
+  const addColumn = page.getByRole("button", {
+    name: "Add column",
+    exact: true,
+  });
+  while (await addColumn.isEnabled()) await addColumn.click();
+  const original = await savedWorkspace(page);
+  const positions = page.locator("#board-grid [data-cell-position]");
+  const expected = original.grid.cells.map(
+    (_, index) =>
+      `${Math.floor(index / original.grid.columns) + 1}x${(index % original.grid.columns) + 1}`,
+  );
+  await expect(positions.locator('[aria-hidden="true"]')).toHaveText(expected);
+  await expect(
+    page.getByRole("button", { name: "Add image to cell 1", exact: true }),
+  ).toHaveAccessibleDescription("Row 1, column 1");
+  for (const shape of ["portrait", "square", "landscape"]) {
+    await selectField(page, "image-shape", shape);
+    for (const zoom of [50, 100, 200]) {
+      await page.locator("#canvas-zoom").fill(String(zoom));
+      await expect(positions.locator('[aria-hidden="true"]')).toHaveText(
+        expected,
+      );
+      expect(
+        await positions.evaluateAll((elements) =>
+          elements.flatMap((element) => {
+            const label = element.getBoundingClientRect();
+            const card = element.closest("button").getBoundingClientRect();
+            const prompt = element.parentElement
+              .querySelector(".empty-cell svg")
+              .getBoundingClientRect();
+            const fits =
+              label.left >= card.left &&
+              label.top >= card.top &&
+              label.right <= card.right + 1 &&
+              label.bottom <= card.bottom + 1 &&
+              label.top >= prompt.bottom &&
+              card.right - label.right <= card.width * 0.061 &&
+              card.bottom - label.bottom <= card.width * 0.031 &&
+              parseFloat(getComputedStyle(element).fontSize) >= 8 &&
+              getComputedStyle(element).fontWeight === "400" &&
+              getComputedStyle(element).color !==
+                getComputedStyle(
+                  element.parentElement.querySelector(".empty-cell"),
+                ).color;
+            return fits
+              ? []
+              : [
+                  {
+                    text: element.textContent,
+                    label: label.toJSON(),
+                    card: card.toJSON(),
+                    prompt: prompt.toJSON(),
+                    fontSize: getComputedStyle(element).fontSize,
+                  },
+                ];
+          }),
+        ),
+        `${shape} at ${zoom}%`,
+      ).toEqual([]);
+    }
+  }
+  await page.locator("#canvas-zoom").fill("100");
+  await selectField(page, "image-shape", "portrait");
+  await uploadCellImage(page, 0);
+  await expect(positions).toHaveCount(expected.length - 1);
+  await expect(page.locator("#asset-library [data-cell-position]")).toHaveCount(
+    0,
+  );
+  await page
+    .locator(".grid-cell")
+    .first()
+    .getByRole("button", { name: /^Cell options/ })
+    .press("Enter");
+  await page.getByRole("button", { name: "Clear cell", exact: true }).click();
+  await expect(positions.locator('[aria-hidden="true"]')).toHaveText(expected);
+  await page
+    .getByRole("button", { name: "Remove column", exact: true })
+    .click();
+  const resized = await savedWorkspace(page);
+  await expect(positions.locator('[aria-hidden="true"]')).toHaveText(
+    resized.grid.cells.map(
+      (_, index) =>
+        `${Math.floor(index / resized.grid.columns) + 1}x${(index % resized.grid.columns) + 1}`,
+    ),
+  );
+  await page.reload();
+  for (const width of [1440, 390, 260]) {
+    await setEditorViewport(page, { width, height: 844 });
+    await page.locator(".grid-cell").first().scrollIntoViewIfNeeded();
+    expect(
+      await positions.first().evaluate((element) => {
+        const label = element.getBoundingClientRect();
+        const prompt = element.parentElement
+          .querySelector(".empty-cell svg")
+          .getBoundingClientRect();
+        return label.top >= prompt.bottom;
+      }),
+    ).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`empty-card-coordinates-${width}.png`),
+    });
+  }
+  expect(
+    (await savedWorkspace(page)).grid.cells.every((cell) => !cell.title),
+  ).toBe(true);
+});
+
 test("panel placement uses available width and height without losing selection", async ({
   page,
 }) => {

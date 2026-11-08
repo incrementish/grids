@@ -974,6 +974,10 @@ export default function App() {
                           index={index}
                           gridId={board.id}
                           gridStyle={board}
+                          position={{
+                            row: Math.floor(index / board.columns) + 1,
+                            column: (index % board.columns) + 1,
+                          }}
                           captionRows={captionRows}
                           moving={cardDrag !== null}
                           dragSource={isSource}

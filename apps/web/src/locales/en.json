@@ -322,6 +322,8 @@
     }
   },
   "cell": {
+    "position": "{row}x{column}",
+    "positionLabel": "Row {row}, column {column}",
     "actions": {
       "useImage": "Use {value1}",
       "imageOptions": "Image options: {value1}",
