@@ -20,12 +20,65 @@ const nativeTouchTest = scrollbarTest.extend({
   hasTouch: true,
 });
 
+async function selectEveryResetOption(dialog) {
+  for (const checkbox of await dialog.getByRole("checkbox").all())
+    await checkbox.check();
+  const defaults = dialog.locator('#reset-theme-target [data-value="default"]');
+  if ((await defaults.getAttribute("aria-checked")) !== "true")
+    await defaults.click();
+}
+
+async function expectResetReview(
+  dialog,
+  selectedOptions,
+  themeTarget = "current",
+) {
+  await expect(dialog.getByRole("heading")).toHaveText(["Reset"]);
+  const review = dialog.locator("[data-reset-review]");
+  await expect(review).toBeVisible();
+  await expect(review.getByRole("listitem")).toHaveText([
+    "Clear board content",
+    "New empty 2x2 grid",
+    `Restore appearance: ${themeTarget === "default" ? "Ink defaults" : "Current palette"}`,
+    "Clear library",
+  ]);
+  for (const [index, option] of [
+    "placements",
+    "canvas",
+    "theme",
+    "images",
+  ].entries()) {
+    await expect(review.getByRole("listitem").nth(index)).toHaveClass(
+      selectedOptions.includes(option) ? "text-ui-text" : "text-ui-muted",
+    );
+  }
+  await expect(dialog.locator("p, [data-reset-impact]")).toHaveCount(0);
+}
+
+async function reviewReset(dialog, selectedOptions, themeTarget = "current") {
+  await dialog
+    .getByRole("button", { name: "Reset selected", exact: true })
+    .click();
+  await expect(dialog.locator("[data-reset-review]")).toBeVisible();
+  await expectResetReview(dialog, selectedOptions, themeTarget);
+}
+
+async function confirmSelectedReset(dialog) {
+  await dialog
+    .getByRole("button", { name: "Confirm reset", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+}
+
 async function resetEverything(page) {
   await page.getByRole("tab", { name: "Reset", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Reset", exact: true });
-  await dialog
-    .getByRole("button", { name: "Reset everything", exact: true })
-    .click();
+  await selectEveryResetOption(dialog);
+  await reviewReset(
+    dialog,
+    ["placements", "canvas", "theme", "images"],
+    "default",
+  );
   await dialog
     .getByRole("button", {
       name: "Delete images and reset everything",
@@ -4362,15 +4415,18 @@ test("reset tab confirms clearing the grid and all images at every screen size",
       path: testInfo.outputPath(`reset-tab-${width}.png`),
     });
     await trigger.click();
-    await expect(dialog.getByRole("radio", { checked: true })).toHaveCount(0);
+    await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(
+      0,
+    );
     await expect(
       dialog.getByRole("button", { name: "Reset selected", exact: true }),
     ).toBeDisabled();
-    await dialog
-      .getByRole("button", { name: "Reset everything", exact: true })
-      .click();
-    await expect(dialog).toContainText("empty 2x2 grid");
-    await expect(dialog).toContainText("This cannot be undone.");
+    await selectEveryResetOption(dialog);
+    await reviewReset(
+      dialog,
+      ["placements", "canvas", "theme", "images"],
+      "default",
+    );
     await dialog.getByRole("button", { name: "Back", exact: true }).click();
     await expect(dialog.locator("[data-reset-review]")).toHaveCount(0);
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -9927,7 +9983,7 @@ touchTest("touch dialogs do not autofocus text inputs", async ({ page }) => {
   await expect(reset).toBeHidden();
 });
 
-test("selective reset dialog keeps unselected data and reviews advanced full resets", async ({
+test("selective reset checkboxes keep unselected data with one reset action", async ({
   page,
 }, testInfo) => {
   await page.goto("./");
@@ -9954,9 +10010,9 @@ test("selective reset dialog keeps unselected data and reviews advanced full res
   const blobs = (await localDatabase(page)).images;
   const trigger = page.getByRole("tab", { name: "Reset", exact: true });
   const dialog = page.getByRole("dialog", { name: "Reset", exact: true });
-  const confirm = dialog.locator("button").filter({
-    hasText:
-      /^(Reset selected|Restore appearance|Create empty 2x2 grid|Clear board content|Clear \d+ cards?|Remove \d+ library images?|Clear library)$/,
+  const confirm = dialog.getByRole("button", {
+    name: "Reset selected",
+    exact: true,
   });
   for (const width of [1440, 390, 260]) {
     await setEditorViewport(page, { width, height: 640 });
@@ -9965,38 +10021,73 @@ test("selective reset dialog keeps unselected data and reviews advanced full res
     await trigger.click();
     await expect(dialog).toBeVisible();
     expect(page.url()).toBe(url);
-    await expect(dialog.getByRole("radio", { checked: true })).toHaveCount(0);
+    await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(
+      0,
+    );
+    await expect(dialog.getByRole("checkbox")).toHaveCount(4);
+    await expect(
+      dialog.getByRole("checkbox", { name: "All", exact: true }),
+    ).toHaveCount(0);
+    await expect(dialog.locator("[data-reset-impact]")).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button").filter({ hasText: /reset/i }),
+    ).toHaveCount(1);
+    await expect(
+      dialog.getByRole("button", {
+        name: "Advanced combinations",
+        exact: true,
+      }),
+    ).toHaveCount(0);
     await expect(confirm).toBeDisabled();
-    await dialog.getByRole("radio", { name: /^Clear library/ }).click();
-    await expect(confirm).toBeEnabled();
-    await expect(dialog).toContainText("This cannot be undone.");
-    await expect(dialog.locator("[data-reset-impact]")).toContainText(
-      "1 image file will be deleted.",
-    );
-    await expect(dialog.locator("[data-reset-impact]")).toContainText(
-      "No board image files will remain.",
-    );
+    await selectField(page, "reset-theme-target", "default");
+    await expect(
+      dialog.getByRole("checkbox", { name: "Restore appearance", exact: true }),
+    ).not.toBeChecked();
+    await expect(confirm).toBeDisabled();
+    await selectField(page, "reset-theme-target", "current");
     await dialog
-      .getByRole("button", { name: "Advanced combinations", exact: true })
-      .click();
+      .getByRole("checkbox", { name: "Clear library", exact: true })
+      .check();
+    await expect(confirm).toBeEnabled();
+    await expect(dialog.locator("[data-reset-impact]")).toHaveCount(0);
+    await reviewReset(dialog, ["images"]);
+    expect((await localDatabase(page)).document).toEqual(original);
+    expect((await localDatabase(page)).images).toEqual(blobs);
+    await dialog.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(dialog.locator("[data-reset-impact]")).toHaveCount(0);
+    await selectEveryResetOption(dialog);
+    await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(
+      4,
+    );
+    for (const checkbox of await dialog.getByRole("checkbox").all())
+      await checkbox.uncheck();
+    await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(
+      0,
+    );
     await expect(confirm).toBeDisabled();
-    for (const name of [
-      "Clear board content",
-      "New empty 2x2 grid",
-      "Restore appearance",
-      "Clear library",
-    ]) {
-      await dialog.getByRole("checkbox", { name, exact: true }).check();
-    }
+    await selectEveryResetOption(dialog);
+    await selectField(page, "reset-theme-target", "current");
+    await expect(
+      dialog.getByRole("checkbox", { name: "Restore appearance", exact: true }),
+    ).toBeChecked();
     await selectField(page, "reset-theme-target", "default");
     await confirm.click();
     await expect(dialog.locator("[data-reset-review]")).toBeVisible();
+    await expectResetReview(
+      dialog,
+      ["placements", "canvas", "theme", "images"],
+      "default",
+    );
+    await expect(
+      dialog.getByRole("button").filter({ hasText: /reset/i }),
+    ).toHaveCount(1);
     expect((await localDatabase(page)).document).toEqual(original);
     expect((await localDatabase(page)).images).toEqual(blobs);
     await dialog.getByRole("button", { name: "Back", exact: true }).click();
     await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(
       4,
     );
+    await expect(dialog.locator("[data-reset-impact]")).toHaveCount(0);
     expect(
       await dialog.evaluate(
         (element) => element.scrollWidth <= element.clientWidth,
@@ -10014,14 +10105,16 @@ test("selective reset dialog keeps unselected data and reviews advanced full res
   await setEditorViewport(page, { width: 1440, height: 1080 });
   await expect(page.locator("[data-editor-sidebar]")).toHaveCount(1);
   await trigger.click();
-  await expect(dialog.getByRole("radio", { checked: true })).toHaveCount(0);
+  await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(0);
   await expect(confirm).toBeDisabled();
-  await dialog.getByRole("radio", { name: /^Restore appearance/ }).click();
+  await dialog
+    .getByRole("checkbox", { name: "Restore appearance", exact: true })
+    .check();
   await expect(
     page.locator('#reset-theme-target [data-value="current"]'),
   ).toHaveAttribute("aria-checked", "true");
-  await confirm.click();
-  await expect(dialog).toHaveCount(0);
+  await reviewReset(dialog, ["theme"]);
+  await confirmSelectedReset(dialog);
   const themed = await savedWorkspace(page);
   expect(themed.grid).toMatchObject({
     colorTheme: "Rose",
@@ -10035,10 +10128,12 @@ test("selective reset dialog keeps unselected data and reviews advanced full res
   expect(themed.exportSettings).toEqual(original.exportSettings);
   expect((await localDatabase(page)).images).toEqual(blobs);
   await trigger.click();
-  await dialog.getByRole("radio", { name: /^Restore appearance/ }).click();
+  await dialog
+    .getByRole("checkbox", { name: "Restore appearance", exact: true })
+    .check();
   await selectField(page, "reset-theme-target", "default");
-  await confirm.click();
-  await expect(dialog).toHaveCount(0);
+  await reviewReset(dialog, ["theme"], "default");
+  await confirmSelectedReset(dialog);
   expect((await savedWorkspace(page)).grid).toMatchObject({
     colorTheme: "Ink",
     background: "#17191b",
@@ -10047,9 +10142,11 @@ test("selective reset dialog keeps unselected data and reviews advanced full res
   expect((await localDatabase(page)).images).toEqual(blobs);
   await selectField(page, "heading-font", "Bangers");
   await trigger.click();
-  await dialog.getByRole("radio", { name: /^New empty 2x2 grid/ }).click();
-  await confirm.click();
-  await expect(dialog).toHaveCount(0);
+  await dialog
+    .getByRole("checkbox", { name: "New empty 2x2 grid", exact: true })
+    .check();
+  await reviewReset(dialog, ["canvas"]);
+  await confirmSelectedReset(dialog);
   const cleared = await savedWorkspace(page);
   expect(cleared.grid).toMatchObject({
     rows: 2,
@@ -10073,15 +10170,11 @@ test("selective reset dialog keeps unselected data and reviews advanced full res
   await editHeading(page, "Keep this heading too");
   const placed = await savedWorkspace(page);
   await trigger.click();
-  await dialog.getByRole("radio", { name: /^Clear library/ }).click();
-  await expect(dialog.locator("[data-reset-impact]")).toContainText(
-    "1 image used on the board will be kept",
-  );
-  await expect(dialog.locator("[data-reset-impact]")).toContainText(
-    "No image files will be deleted.",
-  );
-  await confirm.click();
-  await expect(dialog).toHaveCount(0);
+  await dialog
+    .getByRole("checkbox", { name: "Clear library", exact: true })
+    .check();
+  await reviewReset(dialog, ["images"]);
+  await confirmSelectedReset(dialog);
   const panelCleared = await savedWorkspace(page);
   expect(panelCleared.grid).toEqual(placed.grid);
   expect(panelCleared.assets).toEqual(
@@ -10093,9 +10186,11 @@ test("selective reset dialog keeps unselected data and reviews advanced full res
   await expect(page.locator(".asset")).toHaveCount(0);
   await expect(page.locator(".grid-cell img")).toHaveCount(1);
   await trigger.click();
-  await dialog.getByRole("radio", { name: /^Clear board content/ }).click();
-  await confirm.click();
-  await expect(dialog).toHaveCount(0);
+  await dialog
+    .getByRole("checkbox", { name: "Clear board content", exact: true })
+    .check();
+  await reviewReset(dialog, ["placements"]);
+  await confirmSelectedReset(dialog);
   const deleted = await savedWorkspace(page);
   expect(deleted.grid).toMatchObject({
     rows: 2,
@@ -10113,12 +10208,11 @@ test("selective reset dialog keeps unselected data and reviews advanced full res
   expect((await savedWorkspace(page)).grid).toEqual(deleted.grid);
   await expect(dialog).toHaveCount(0);
   await trigger.click();
-  await dialog.getByRole("radio", { name: /^Clear library/ }).click();
-  await expect(dialog.locator("[data-reset-impact]")).toContainText(
-    "1 image file will be deleted.",
-  );
-  await confirm.click();
-  await expect(dialog).toHaveCount(0);
+  await dialog
+    .getByRole("checkbox", { name: "Clear library", exact: true })
+    .check();
+  await reviewReset(dialog, ["images"]);
+  await confirmSelectedReset(dialog);
   expect((await savedWorkspace(page)).assets).toEqual([]);
   expect((await localDatabase(page)).images).toEqual([]);
 });

@@ -233,6 +233,7 @@
       "useDefaults": "Ink defaults",
       "everything": "Reset everything",
       "confirmAll": "Delete images and reset everything",
+      "confirmSelection": "Confirm reset",
       "newGrid": "Create empty 2x2 grid",
       "restoreAppearance": "Restore appearance",
       "clearCards": "{count, plural, =0 {Clear board content} one {Clear # card} other {Clear # cards}}",
