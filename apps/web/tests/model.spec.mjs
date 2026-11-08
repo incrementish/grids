@@ -312,6 +312,13 @@ test("preset palettes theme headings, card surfaces and captions with readable c
 
 test("editor navigation migrates legacy URLs and restores browser-local history", () => {
   const defaults = navigation.parseEditorState({});
+  expect(defaults.zoom).toBe(100);
+  expect(navigation.parseEditorState({ zoom: 75 }).zoom).toBe(75);
+  for (const zoom of [0, 205, 72, "75", null]) {
+    const state = navigation.parseEditorState({ selectedPanel: 3, zoom });
+    expect(state.zoom).toBe(100);
+    expect(state.selectedPanel).toBe(3);
+  }
   expect(navigation.parseEditorState({ selectedPanel: 3 }).selectedPanel).toBe(
     3,
   );

@@ -20,6 +20,21 @@ const nativeTouchTest = scrollbarTest.extend({
   hasTouch: true,
 });
 
+async function resetEverything(page) {
+  await page.getByRole("tab", { name: "Reset", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Reset", exact: true });
+  await dialog
+    .getByRole("button", { name: "Reset everything", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", {
+      name: "Delete images and reset everything",
+      exact: true,
+    })
+    .click();
+  await expect(dialog).toHaveCount(0);
+}
+
 function overlayScrollbar(viewport, axis) {
   return viewport
     .locator("xpath=following-sibling::*[1][@data-overlay-scroll-frame]")
@@ -1006,8 +1021,7 @@ test("panel placement uses available width and height without losing selection",
   page,
 }) => {
   await page.goto("./");
-  await openSidebarPanel(page, "Reset");
-  await page.getByRole("checkbox", { name: "Grid", exact: true }).check();
+  await openSidebarPanel(page, "Design");
   for (const [width, height, layout] of [
     [780, 720, "bottom"],
     [780, 400, "right"],
@@ -1030,26 +1044,8 @@ test("panel placement uses available width and height without losing selection",
       layout === "bottom" ? "vertical" : "horizontal",
     );
     await expect(
-      page.getByRole("tab", { name: "Reset", exact: true }),
+      page.getByRole("tab", { name: "Design", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
-    const description = page.locator("[data-reset-description]");
-    await expect(description).toHaveText(
-      "Clear or restore parts of your grid, canvas, theme or image library without changing the rest.",
-    );
-    expect(
-      await description.evaluate((element) => {
-        const bounds = element.getBoundingClientRect();
-        const options = element.nextElementSibling.getBoundingClientRect();
-        return {
-          first: element.parentElement.firstElementChild === element,
-          aboveOptions: bounds.bottom <= options.top,
-          fits: element.scrollWidth <= element.clientWidth,
-        };
-      }),
-    ).toEqual({ first: true, aboveOptions: true, fits: true });
-    await expect(
-      page.getByRole("checkbox", { name: "Grid", exact: true }),
-    ).toBeChecked();
     const bounds = await page.locator("[data-editor-sidebar]").boundingBox();
     if (layout === "right") {
       expect(bounds.width).toBeCloseTo(350, 1);
@@ -1528,6 +1524,13 @@ test("canvas zoom keeps fixed card sizes across shapes and viewports", async ({
   await page.screenshot({
     path: testInfo.outputPath("canvas-zoom-mobile.png"),
   });
+  const historyLength = await page.evaluate(() => history.length);
+  await zoom.fill("75");
+  await checkWidth(100);
+  expect(await page.evaluate(() => history.length)).toBe(historyLength);
+  await reloadWorkspace(page);
+  await expect(zoom).toHaveValue("75");
+  await checkWidth(100);
 });
 
 test("canvas padding keeps overflow inside its viewport on short and narrow screens", async ({
@@ -3641,15 +3644,7 @@ test("design identifies reset and modified color themes across navigation and re
   }
   await builder.getByRole("radio", { name: "Forest", exact: true }).click();
   await expect(colors).toHaveText("1ColorsForest");
-  await page.getByRole("tab", { name: "Reset", exact: true }).click();
-  const reset = page.getByRole("tabpanel", { name: "Reset", exact: true });
-  await reset.getByRole("checkbox", { name: "All", exact: true }).check();
-  await reset
-    .getByRole("button", { name: "Reset selected", exact: true })
-    .click();
-  await expect(
-    reset.getByRole("button", { name: "Reset selected", exact: true }),
-  ).toBeDisabled();
+  await resetEverything(page);
   await openSidebarPanel(page, "Design");
   await expect(colors).toHaveText("1ColorsInk");
   await expect(ink).toBeChecked();
@@ -4204,7 +4199,7 @@ test("reset tab confirms clearing the grid and all images at every screen size",
     name: "Reset",
     exact: true,
   });
-  const dialog = page.getByRole("tabpanel", {
+  const dialog = page.getByRole("dialog", {
     name: "Reset",
     exact: true,
   });
@@ -4255,21 +4250,27 @@ test("reset tab confirms clearing the grid and all images at every screen size",
       path: testInfo.outputPath(`reset-tab-${width}.png`),
     });
     await trigger.click();
-    await dialog.getByRole("checkbox", { name: "All", exact: true }).check();
+    await expect(dialog.getByRole("radio", { checked: true })).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: "Reset selected", exact: true }),
+    ).toBeDisabled();
+    await dialog
+      .getByRole("button", { name: "Reset everything", exact: true })
+      .click();
     await expect(dialog).toContainText("empty 2x2 grid");
     await expect(dialog).toContainText("This cannot be undone.");
-    await openSidebarPanel(page, "Design");
+    await dialog.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(dialog.locator("[data-reset-review]")).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await expect(
+      page.getByRole("tab", { name: "Design", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
     expect((await localDatabase(page)).document).toEqual(before);
     expect((await localDatabase(page)).images).toEqual(blobs);
   }
-  await trigger.click();
-  await dialog.getByRole("checkbox", { name: "All", exact: true }).check();
-  await dialog
-    .getByRole("button", { name: "Reset selected", exact: true })
-    .click();
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(0);
+  await resetEverything(page);
   await expect
     .poll(async () => (await localDatabase(page)).document?.grid.id)
     .not.toBe(before.grid.id);
@@ -4303,9 +4304,6 @@ test("reset tab confirms clearing the grid and all images at every screen size",
       }, src),
     ).toBe(true);
   }
-  await expect(
-    dialog.getByRole("button", { name: "Reset selected", exact: true }),
-  ).toBeDisabled();
   await reloadWorkspace(page);
   expect((await savedWorkspace(page)).grid).toEqual(reset.grid);
   await openSidebarPanel(page, "Images");
@@ -6621,15 +6619,7 @@ test("failures show readable, dismissible notifications without success noise", 
   await openSidebarPanel(page, "Design");
   const notices = page.locator("[data-sonner-toast]");
   await expect(notices).toHaveCount(0);
-  await page.getByRole("tab", { name: "Reset", exact: true }).click();
-  await page
-    .getByRole("tabpanel", { name: "Reset", exact: true })
-    .getByRole("checkbox", { name: "All", exact: true })
-    .check();
-  await page
-    .getByRole("tabpanel", { name: "Reset", exact: true })
-    .getByRole("button", { name: "Reset selected", exact: true })
-    .click();
+  await resetEverything(page);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(notices).toHaveCount(0);
   await openSidebarPanel(page, "Images");
@@ -8729,15 +8719,7 @@ test("failed full reset preserves stored metadata and blobs until the retry comm
   await page.evaluate(() => {
     window.failPurgeSave = true;
   });
-  await page.getByRole("tab", { name: "Reset", exact: true }).click();
-  await page
-    .getByRole("tabpanel", { name: "Reset", exact: true })
-    .getByRole("checkbox", { name: "All", exact: true })
-    .check();
-  await page
-    .getByRole("tabpanel", { name: "Reset", exact: true })
-    .getByRole("button", { name: "Reset selected", exact: true })
-    .click();
+  await resetEverything(page);
   await expect(page.locator("#save-status")).toHaveText("Save failed");
   const failed = await localDatabase(page);
   expect(failed.document).toEqual(original);
@@ -9817,7 +9799,7 @@ touchTest("touch dialogs do not autofocus text inputs", async ({ page }) => {
     "INPUT",
   );
   await page.getByRole("tab", { name: "Reset", exact: true }).tap();
-  const reset = page.getByRole("tabpanel", {
+  const reset = page.getByRole("dialog", {
     name: "Reset",
     exact: true,
   });
@@ -9829,11 +9811,11 @@ touchTest("touch dialogs do not autofocus text inputs", async ({ page }) => {
       ),
     ),
   ).toBe(false);
-  await page.getByRole("tab", { name: "Images", exact: true }).tap();
+  await reset.getByRole("button", { name: "Cancel", exact: true }).tap();
   await expect(reset).toBeHidden();
 });
 
-test("selective reset keeps unselected data in desktop and bottom shelf panels", async ({
+test("selective reset dialog keeps unselected data and reviews advanced full resets", async ({
   page,
 }, testInfo) => {
   await page.goto("./");
@@ -9859,203 +9841,75 @@ test("selective reset keeps unselected data in desktop and bottom shelf panels",
   const original = await savedWorkspace(page);
   const blobs = (await localDatabase(page)).images;
   const trigger = page.getByRole("tab", { name: "Reset", exact: true });
-  const dialog = page.getByRole("tabpanel", { name: "Reset", exact: true });
-  const confirm = dialog.getByRole("button", {
-    name: "Reset selected",
-    exact: true,
+  const dialog = page.getByRole("dialog", { name: "Reset", exact: true });
+  const confirm = dialog.locator("button").filter({
+    hasText:
+      /^(Reset selected|Restore appearance|Create empty 2x2 grid|Clear board content|Clear \d+ cards?|Remove \d+ library images?|Clear library)$/,
   });
   for (const width of [1440, 390, 260]) {
     await setEditorViewport(page, { width, height: 640 });
+    await expect(page.locator("[data-editor-sidebar]")).toHaveCount(1);
+    const url = page.url();
     await trigger.click();
     await expect(dialog).toBeVisible();
-    await expect(
-      page.getByRole("dialog", { name: "Reset", exact: true }),
-    ).toHaveCount(0);
-    await expect(
-      page
-        .locator("[data-canvas-header]")
-        .getByRole("button", { name: "Reset", exact: true }),
-    ).toHaveCount(0);
-    await expect(trigger).toHaveAttribute("aria-selected", "true");
-    await expect(trigger.locator("span")).toHaveCSS("position", "absolute");
-    if (width === 1440) {
-      await expect(
-        page.getByRole("tab", { name: "Design", exact: true }).locator("span"),
-      ).toHaveCSS("position", "static");
-      expect((await trigger.boundingBox()).width).toBeLessThanOrEqual(45);
-    }
-    await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(
-      0,
-    );
+    expect(page.url()).toBe(url);
+    await expect(dialog.getByRole("radio", { checked: true })).toHaveCount(0);
     await expect(confirm).toBeDisabled();
-    const all = dialog.getByRole("checkbox", { name: "All", exact: true });
-    const allLabel = all.locator("..");
-    const neutralBorder = await dialog
-      .getByRole("checkbox", { name: "Theme", exact: true })
-      .evaluate(
-        (element) =>
-          getComputedStyle(element.closest("[data-reset-option]"))
-            .borderTopColor,
-      );
-    await expect(allLabel).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await expect(allLabel).toHaveCSS("border-top-color", neutralBorder);
-    const choices = dialog.locator("[data-reset-option]");
-    for (let index = 0; index < 5; index++) {
-      const choice = choices.nth(index);
-      await choice.hover();
-      await expect(choice).not.toHaveCSS(
-        "background-color",
-        "rgba(0, 0, 0, 0)",
-      );
-      await expect(choice).toHaveCSS("border-top-color", neutralBorder);
-      await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(
-        0,
-      );
-      await page.mouse.move(0, 0);
-      await expect(choice).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    }
-    await selectField(page, "reset-theme-target", "default");
-    await expect(
-      page.locator('#reset-theme-target [data-value="default"] span'),
-    ).toHaveCSS("position", "static");
-    await expect(page.locator("#reset-theme-target [role=radio]")).toHaveCount(
-      2,
-    );
-    const themeBox = dialog.locator('[data-reset-option="theme"]');
-    const activeThemeTarget = page.locator(
-      '#reset-theme-target [aria-checked="true"]',
-    );
-    await page.mouse.move(0, 0);
-    await expect(themeBox).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    const selectedBackground = await activeThemeTarget.evaluate(
-      (element) => getComputedStyle(element).backgroundColor,
-    );
-    const toggleTargets = page.locator("#reset-theme-target [role=radio]");
-    const toggleBorder = await page
-      .locator('#reset-theme-target [aria-checked="false"]')
-      .evaluate((element) => getComputedStyle(element).backgroundColor);
-    for (const target of await toggleTargets.all()) {
-      await expect(target).toHaveCSS("border-color", toggleBorder);
-    }
-    await themeBox.hover();
-    await expect(themeBox).toHaveCSS(
-      "background-color",
-      await hoverColorOf(themeBox, "--panel"),
-    );
-    await expect(activeThemeTarget).toHaveCSS(
-      "background-color",
-      selectedBackground,
-    );
-    for (const target of await toggleTargets.all()) {
-      await expect(target).toHaveCSS("border-color", toggleBorder);
-    }
-    await page.mouse.move(0, 0);
-    await expect(activeThemeTarget).toHaveCSS(
-      "background-color",
-      selectedBackground,
-    );
-    await expect(activeThemeTarget).toHaveCSS("border-color", toggleBorder);
-    await expect(
-      dialog.getByRole("checkbox", { name: "Theme", exact: true }),
-    ).not.toBeChecked();
-    await expect(confirm).toBeDisabled();
-    await selectField(page, "reset-theme-target", "current");
-    await dialog
-      .getByRole("checkbox", { name: "Library", exact: true })
-      .check();
+    await dialog.getByRole("radio", { name: /^Clear library/ }).click();
     await expect(confirm).toBeEnabled();
     await expect(dialog).toContainText("This cannot be undone.");
-    await expect(dialog).toContainText(
-      "Images still used on the canvas are kept.",
+    await expect(dialog.locator("[data-reset-impact]")).toContainText(
+      "1 image file will be deleted.",
     );
-    await dialog.getByRole("checkbox", { name: "Canvas", exact: true }).check();
-    await expect(dialog).toContainText(
-      "All library and canvas images will be deleted",
+    await expect(dialog.locator("[data-reset-impact]")).toContainText(
+      "No board image files will remain.",
     );
-    await dialog.getByRole("checkbox", { name: "All", exact: true }).check();
-    await expect(allLabel).toHaveCSS("border-top-color", neutralBorder);
-    await expect(allLabel).toHaveCSS("outline-style", "none");
-    await expect(all).toHaveCSS("outline-style", "none");
-    await all.focus();
-    await all.press("Space");
-    await expect(all).not.toBeChecked();
-    const focusBorder = await all.evaluate(
-      (element) => getComputedStyle(element).accentColor,
-    );
-    await expect(allLabel).toHaveCSS("border-top-color", focusBorder);
-    await expect(allLabel).toHaveCSS("outline-style", "none");
-    await expect(all).toHaveCSS("outline-style", "none");
-    await all.press("Tab");
-    await all.check();
-    await expect(allLabel).toHaveCSS("border-top-color", neutralBorder);
-    await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(
-      5,
-    );
-    await selectField(page, "reset-theme-target", "current");
-    await expect(
-      dialog.getByRole("checkbox", { name: "Theme", exact: true }),
-    ).toBeChecked();
-    await expect(all).not.toBeChecked();
-    await selectField(page, "reset-theme-target", "default");
-    await expect(all).toBeChecked();
-    await expect(dialog).toContainText("empty 2x2 grid");
     await dialog
-      .getByRole("checkbox", { name: "Theme", exact: true })
-      .uncheck();
-    await expect(
-      dialog.getByRole("checkbox", { name: "All", exact: true }),
-    ).not.toBeChecked();
-    const panel = page.locator("[data-sidebar-panels]");
+      .getByRole("button", { name: "Advanced combinations", exact: true })
+      .click();
+    await expect(confirm).toBeDisabled();
+    for (const name of [
+      "Clear board content",
+      "New empty 2x2 grid",
+      "Restore appearance",
+      "Clear library",
+    ]) {
+      await dialog.getByRole("checkbox", { name, exact: true }).check();
+    }
+    await selectField(page, "reset-theme-target", "default");
+    await confirm.click();
+    await expect(dialog.locator("[data-reset-review]")).toBeVisible();
+    expect((await localDatabase(page)).document).toEqual(original);
+    expect((await localDatabase(page)).images).toEqual(blobs);
+    await dialog.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(
+      4,
+    );
     expect(
-      await panel.evaluate(
+      await dialog.evaluate(
         (element) => element.scrollWidth <= element.clientWidth,
       ),
     ).toBe(true);
-    expect(
-      await dialog.locator("fieldset").evaluate((element) => {
-        const labels = [...element.querySelectorAll("[data-reset-option]")].map(
-          (label) => label.getBoundingClientRect(),
-        );
-        return {
-          columns: new Set(
-            labels.slice(1).map((bounds) => Math.round(bounds.left)),
-          ).size,
-          allWider: labels[0].width > labels[1].width,
-          firstPairAligned: Math.abs(labels[1].top - labels[2].top) < 1,
-          secondPairAligned: Math.abs(labels[3].top - labels[4].top) < 1,
-        };
-      }),
-    ).toEqual({
-      columns: width <= 360 ? 1 : 2,
-      allWider: width > 360,
-      firstPairAligned: width > 360,
-      secondPairAligned: width > 360,
-    });
     await page.screenshot({
       path: testInfo.outputPath(`reset-options-${width}.png`),
       fullPage: true,
     });
-    await openSidebarPanel(page, "Images");
+    await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
     expect((await localDatabase(page)).document).toEqual(original);
   }
   await setEditorViewport(page, { width: 1440, height: 1080 });
-  await openSidebarPanel(page, "Reset");
-  await dialog.getByRole("checkbox", { name: "Theme", exact: true }).check();
-  await selectField(page, "reset-theme-target", "default");
-  await page.goBack();
-  await expect(dialog).toBeHidden();
-  await page.goForward();
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(0);
+  await expect(page.locator("[data-editor-sidebar]")).toHaveCount(1);
+  await trigger.click();
+  await expect(dialog.getByRole("radio", { checked: true })).toHaveCount(0);
+  await expect(confirm).toBeDisabled();
+  await dialog.getByRole("radio", { name: /^Restore appearance/ }).click();
   await expect(
     page.locator('#reset-theme-target [data-value="current"]'),
   ).toHaveAttribute("aria-checked", "true");
-  await expect(confirm).toBeDisabled();
-  await dialog.getByRole("checkbox", { name: "Theme", exact: true }).check();
   await confirm.click();
-  await expect(dialog).toBeVisible();
-  await expect(confirm).toBeDisabled();
+  await expect(dialog).toHaveCount(0);
   const themed = await savedWorkspace(page);
   expect(themed.grid).toMatchObject({
     colorTheme: "Rose",
@@ -10068,11 +9922,11 @@ test("selective reset keeps unselected data in desktop and bottom shelf panels",
   expect(themed.assets).toEqual(original.assets);
   expect(themed.exportSettings).toEqual(original.exportSettings);
   expect((await localDatabase(page)).images).toEqual(blobs);
-  await openSidebarPanel(page, "Reset");
-  await dialog.getByRole("checkbox", { name: "Theme", exact: true }).check();
+  await trigger.click();
+  await dialog.getByRole("radio", { name: /^Restore appearance/ }).click();
   await selectField(page, "reset-theme-target", "default");
   await confirm.click();
-  await expect(confirm).toBeDisabled();
+  await expect(dialog).toHaveCount(0);
   expect((await savedWorkspace(page)).grid).toMatchObject({
     colorTheme: "Ink",
     background: "#17191b",
@@ -10080,10 +9934,10 @@ test("selective reset keeps unselected data in desktop and bottom shelf panels",
   expect((await savedWorkspace(page)).grid.cells).toEqual(original.grid.cells);
   expect((await localDatabase(page)).images).toEqual(blobs);
   await selectField(page, "heading-font", "Bangers");
-  await openSidebarPanel(page, "Reset");
-  await dialog.getByRole("checkbox", { name: "Grid", exact: true }).check();
+  await trigger.click();
+  await dialog.getByRole("radio", { name: /^New empty 2x2 grid/ }).click();
   await confirm.click();
-  await expect(confirm).toBeDisabled();
+  await expect(dialog).toHaveCount(0);
   const cleared = await savedWorkspace(page);
   expect(cleared.grid).toMatchObject({
     rows: 2,
@@ -10107,9 +9961,15 @@ test("selective reset keeps unselected data in desktop and bottom shelf panels",
   await editHeading(page, "Keep this heading too");
   const placed = await savedWorkspace(page);
   await trigger.click();
-  await dialog.getByRole("checkbox", { name: "Library", exact: true }).check();
+  await dialog.getByRole("radio", { name: /^Clear library/ }).click();
+  await expect(dialog.locator("[data-reset-impact]")).toContainText(
+    "1 image used on the board will be kept",
+  );
+  await expect(dialog.locator("[data-reset-impact]")).toContainText(
+    "No image files will be deleted.",
+  );
   await confirm.click();
-  await expect(confirm).toBeDisabled();
+  await expect(dialog).toHaveCount(0);
   const panelCleared = await savedWorkspace(page);
   expect(panelCleared.grid).toEqual(placed.grid);
   expect(panelCleared.assets).toEqual(
@@ -10121,9 +9981,9 @@ test("selective reset keeps unselected data in desktop and bottom shelf panels",
   await expect(page.locator(".asset")).toHaveCount(0);
   await expect(page.locator(".grid-cell img")).toHaveCount(1);
   await trigger.click();
-  await dialog.getByRole("checkbox", { name: "Canvas", exact: true }).check();
+  await dialog.getByRole("radio", { name: /^Clear board content/ }).click();
   await confirm.click();
-  await expect(confirm).toBeDisabled();
+  await expect(dialog).toHaveCount(0);
   const deleted = await savedWorkspace(page);
   expect(deleted.grid).toMatchObject({
     rows: 2,
@@ -10139,15 +9999,14 @@ test("selective reset keeps unselected data in desktop and bottom shelf panels",
   expect((await localDatabase(page)).images).toEqual(blobs);
   await reloadWorkspace(page);
   expect((await savedWorkspace(page)).grid).toEqual(deleted.grid);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("checkbox", { checked: true })).toHaveCount(0);
-  await expect(
-    page.locator('#reset-theme-target [data-value="current"]'),
-  ).toHaveAttribute("aria-checked", "true");
-  await openSidebarPanel(page, "Reset");
-  await dialog.getByRole("checkbox", { name: "Library", exact: true }).check();
+  await expect(dialog).toHaveCount(0);
+  await trigger.click();
+  await dialog.getByRole("radio", { name: /^Clear library/ }).click();
+  await expect(dialog.locator("[data-reset-impact]")).toContainText(
+    "1 image file will be deleted.",
+  );
   await confirm.click();
-  await expect(confirm).toBeDisabled();
+  await expect(dialog).toHaveCount(0);
   expect((await savedWorkspace(page)).assets).toEqual([]);
   expect((await localDatabase(page)).images).toEqual([]);
 });
@@ -10194,18 +10053,7 @@ test("guest reset clears images and removed placements and restores default sett
     resolution: 300,
     quality: 70,
   });
-  await page.getByRole("tab", { name: "Reset", exact: true }).click();
-  const dialog = page.getByRole("tabpanel", {
-    name: "Reset",
-    exact: true,
-  });
-  await dialog.getByRole("checkbox", { name: "All", exact: true }).check();
-  await dialog
-    .getByRole("button", { name: "Reset selected", exact: true })
-    .click();
-  await expect(
-    dialog.getByRole("button", { name: "Reset selected", exact: true }),
-  ).toBeDisabled();
+  await resetEverything(page);
   await expect(page.locator(".grid-cell")).toHaveCount(4);
   await expect(
     page.getByRole("button", { name: /^Edit grid heading: / }),

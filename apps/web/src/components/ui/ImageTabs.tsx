@@ -40,13 +40,14 @@ export function ImageTabs({
   square?: boolean;
   vertical?: boolean;
   selectedIndex: number;
-  onChange: (index: number) => void;
+  onChange: (index: number, trigger: HTMLButtonElement) => void;
   tabs: {
     label: string;
     disabled?: boolean;
     title?: string;
     icon?: LucideIcon;
     iconOnly?: boolean;
+    popup?: "dialog";
   }[];
 }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -108,11 +109,12 @@ export function ImageTabs({
           role="tab"
           id={`${id}-tab-${index}`}
           aria-controls={`${id}-panel-${index}`}
+          aria-haspopup={tab.popup}
           aria-selected={index === selectedIndex}
           data-selected={index === selectedIndex ? "" : undefined}
           disabled={tab.disabled || index === selectedIndex}
           tabIndex={tab.disabled || index === selectedIndex ? -1 : 0}
-          onClick={() => onChange(index)}
+          onClick={(event) => onChange(index, event.currentTarget)}
           onKeyDown={(event) => {
             const previousKey = vertical ? "ArrowUp" : "ArrowLeft";
             const nextKey = vertical ? "ArrowDown" : "ArrowRight";

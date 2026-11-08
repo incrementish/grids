@@ -13,18 +13,10 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Toaster, toast } from "sonner";
-import {
-  PanelsTopLeft,
-  Download,
-  ImagePlus,
-  RefreshCw,
-  RotateCcw,
-} from "lucide-react";
+import { PanelsTopLeft, Download, ImagePlus, RefreshCw } from "lucide-react";
 import {
   Button,
-  CheckboxField,
   ColorField,
-  IconRadioField,
   PercentField,
   RangeField,
   SelectField,
@@ -32,6 +24,7 @@ import {
 import { Modal } from "./components/ui/Modal";
 import { GridResizeControls } from "./components/GridResizer";
 import { GridPreview } from "./components/GridPreview";
+import { ResetDialog } from "./components/ResetDialog";
 import { centerTextArea, TextScrollbar } from "./components/TextScrollbar";
 import {
   GridCell,
@@ -73,6 +66,7 @@ import {
   sharedCaptionRows,
 } from "./export";
 import { LocalWorkspaceStore, LocalWorkspaceConflictError } from "./storage";
+import { useEditorState } from "./browser/navigation";
 
 const pickerGridClassName =
   "grid grid-cols-[repeat(auto-fill,minmax(min(100%,var(--picker-card-min-width)),1fr))] gap-2.5 *:max-w-(--picker-card-max-width)";
@@ -232,8 +226,11 @@ export default function App() {
     (asset) => asset.trashedAt === undefined && !asset.libraryHidden,
   );
   const [headingEditing, setHeadingEditing] = useState(false);
-  const [zoom, setZoom] = useState(100);
+  const [zoom, setZoom] = useEditorState("zoom");
   const [exportOpen, setExportOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetSession, setResetSession] = useState(0);
+  const resetButton = useRef<HTMLButtonElement | null>(null);
   const exportButton = useRef<HTMLButtonElement>(null);
   const [imageTarget, setImageTarget] = useState<string | null>(null);
   const closeImagePicker = () => {
@@ -294,22 +291,6 @@ export default function App() {
     dispatchDocument({ type: "export/patch", patch });
   const [exporting, setExporting] = useState(false);
   const replaceUpload = useRef<HTMLInputElement>(null);
-  const [resetSelection, setResetSelection] = useState<ResetSelection>({
-    canvas: false,
-    theme: false,
-    defaultTheme: false,
-    images: false,
-    placements: false,
-  });
-  const [resetThemeTarget, setResetThemeTarget] = useState<
-    "current" | "default"
-  >("current");
-  const resetAll =
-    resetSelection.canvas &&
-    resetSelection.defaultTheme &&
-    resetSelection.images &&
-    resetSelection.placements;
-  const resetSelected = Object.values(resetSelection).some(Boolean);
   const board = workspace.grid;
   useLayoutEffect(() => {
     const cleaned = removeCreditRequiredImages(workspace);
@@ -728,20 +709,16 @@ export default function App() {
     await importFiles(input.files, target);
     input.value = "";
   };
-  const clearResetSelection = () => {
-    setResetSelection({
-      canvas: false,
-      theme: false,
-      defaultTheme: false,
-      images: false,
-      placements: false,
-    });
-    setResetThemeTarget("current");
-  };
-  const resetGrid = () => {
-    if (!resetSelected || importProgress !== null) return;
-    const command = createResetGridCommand(resetSelection);
-    if (resetSelection.images) {
+  const resetGrid = (selection: ResetSelection) => {
+    if (
+      !Object.values(selection).some(Boolean) ||
+      importProgress !== null ||
+      exporting ||
+      conflict
+    )
+      return;
+    const command = createResetGridCommand(selection);
+    if (selection.images) {
       const retained = new Set(
         documentReducer(workspace, command).assets.map((asset) => asset.id),
       );
@@ -755,7 +732,7 @@ export default function App() {
     setHeadingEditing(false);
     setImageTarget(null);
     setCardDrag(null);
-    clearResetSelection();
+    setResetOpen(false);
     previewFrame
       ?.closest("[data-workspace-scroll]")
       ?.scrollTo({ top: 0, left: 0 });
@@ -785,9 +762,12 @@ export default function App() {
               onChange={setZoom}
             />
           }
-          resetPanel={renderResetPanel()}
-          onResetOpen={clearResetSelection}
-          resetDisabled={importProgress !== null || exporting}
+          onResetOpen={(trigger) => {
+            resetButton.current = trigger;
+            setResetSession((session) => session + 1);
+            setResetOpen(true);
+          }}
+          resetDisabled={conflict || importProgress !== null || exporting}
           status={
             <span
               id="save-status"
@@ -1280,6 +1260,15 @@ export default function App() {
         hidden
         onChange={(event) => upload(event, uploadTarget.current)}
       />
+      <ResetDialog
+        open={resetOpen}
+        session={resetSession}
+        workspace={workspace}
+        disabled={conflict || importProgress !== null || exporting}
+        onConfirm={resetGrid}
+        onClose={() => setResetOpen(false)}
+        returnFocus={resetButton}
+      />
       <Modal
         open={exportOpen}
         onClose={() => setExportOpen(false)}
@@ -1484,114 +1473,6 @@ export default function App() {
           loading
         />
       ),
-    );
-  }
-
-  function renderResetPanel() {
-    return (
-      <section aria-label={t("editor.reset.title")}>
-        <div className="flex flex-col gap-4">
-          <p data-reset-description className="m-0 text-sm text-ui-muted">
-            {t("editor.reset.description")}
-          </p>
-          <fieldset className="m-0 grid min-w-0 grid-cols-2 gap-2 border-0 p-0 max-[360px]:grid-cols-1">
-            <legend className="sr-only">{t("editor.reset.prompt")}</legend>
-            <CheckboxField
-              id="reset-all"
-              label={t("editor.reset.all")}
-              data-reset-option="all"
-              className="col-span-full"
-              checked={resetAll}
-              onChange={(checked) => {
-                if (checked) setResetThemeTarget("default");
-                setResetSelection({
-                  canvas: checked,
-                  theme: false,
-                  defaultTheme: checked,
-                  images: checked,
-                  placements: checked,
-                });
-              }}
-            />
-            {(["canvas", "theme", "placements", "images"] as const).map(
-              (part) => (
-                <CheckboxField
-                  key={part}
-                  id={`reset-${part}`}
-                  data-reset-option={part}
-                  className="**:[[role=radio]]:border-ui-background!"
-                  label={t(`editor.reset.${part}`)}
-                  description={t(`editor.reset.${part}Description`)}
-                  checked={
-                    part === "theme"
-                      ? resetSelection.theme || resetSelection.defaultTheme
-                      : resetSelection[part]
-                  }
-                  onChange={(checked) => {
-                    setResetSelection((selection) => ({
-                      ...selection,
-                      ...(part === "theme"
-                        ? {
-                            theme: checked && resetThemeTarget === "current",
-                            defaultTheme:
-                              checked && resetThemeTarget === "default",
-                          }
-                        : { [part]: checked }),
-                    }));
-                  }}
-                >
-                  {part === "theme" && (
-                    <IconRadioField
-                      id="reset-theme-target"
-                      label={t("editor.reset.themeTarget")}
-                      hideLabel
-                      columns={2}
-                      value={resetThemeTarget}
-                      options={[
-                        { value: "current", label: t("editor.reset.current") },
-                        { value: "default", label: t("editor.reset.default") },
-                      ]}
-                      onChange={(value) => {
-                        const target =
-                          value === "default" ? "default" : "current";
-                        setResetThemeTarget(target);
-                        setResetSelection((selection) => {
-                          const checked =
-                            selection.theme || selection.defaultTheme;
-                          return {
-                            ...selection,
-                            theme: checked && target === "current",
-                            defaultTheme: checked && target === "default",
-                          };
-                        });
-                      }}
-                    />
-                  )}
-                </CheckboxField>
-              ),
-            )}
-          </fieldset>
-          <p aria-live="polite" className="m-0 text-sm text-ui-muted">
-            {resetAll
-              ? t("editor.reset.allWarning")
-              : resetSelection.images
-                ? resetSelection.canvas || resetSelection.placements
-                  ? t("editor.reset.allImagesWarning")
-                  : t("editor.reset.imagesWarning")
-                : t("editor.reset.retention")}
-          </p>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button
-              intent="danger"
-              disabled={!resetSelected || importProgress !== null || exporting}
-              onClick={resetGrid}
-            >
-              <RotateCcw aria-hidden="true" />
-              {t("editor.reset.confirm")}
-            </Button>
-          </div>
-        </div>
-      </section>
     );
   }
 }

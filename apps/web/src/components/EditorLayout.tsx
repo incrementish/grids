@@ -10,7 +10,6 @@ import { useTranslation } from "react-i18next";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import {
   useEffect,
-  useEffectEvent,
   useId,
   useLayoutEffect,
   useRef,
@@ -36,15 +35,13 @@ export function EditorLayout({
   actions,
   canvasControls,
   status,
-  resetPanel,
   onResetOpen,
   resetDisabled = false,
 }: {
   actions: ReactNode;
   canvasControls: ReactNode;
   status?: ReactNode;
-  resetPanel?: ReactNode;
-  onResetOpen?: () => void;
+  onResetOpen?: (trigger: HTMLButtonElement | null) => void;
   resetDisabled?: boolean;
   children: [
     (toggle: ReactNode, expanded: boolean) => ReactNode,
@@ -61,9 +58,8 @@ export function EditorLayout({
   );
   const [sidebarOpen, setSidebarOpen] = useEditorState("sidebarOpen");
   const [selectedPanel, setSelectedPanel] = useEditorState("selectedPanel");
-  const resetOpened = useEffectEvent(() => onResetOpen?.());
   useLayoutEffect(() => {
-    if (selectedPanel === 3) resetOpened();
+    if (selectedPanel === 3) setSelectedPanel(0);
   }, [selectedPanel]);
   const panelOrder = [0, 2, 3] as const;
   const panelsId = useId();
@@ -392,7 +388,11 @@ export function EditorLayout({
                         vertical={compact}
                         label={t("editor.panels")}
                         selectedIndex={panelOrder.indexOf(selectedPanel)}
-                        onChange={(index) => {
+                        onChange={(index, trigger) => {
+                          if (panelOrder[index] === 3) {
+                            onResetOpen?.(trigger);
+                            return;
+                          }
                           rememberPanelScroll();
                           setSelectedPanel(panelOrder[index]!);
                         }}
@@ -404,6 +404,7 @@ export function EditorLayout({
                             title: t("editor.reset.tooltip"),
                             icon: RotateCcw,
                             iconOnly: true,
+                            popup: "dialog",
                             disabled: resetDisabled,
                           },
                         ]}
@@ -442,9 +443,7 @@ export function EditorLayout({
                     aria-labelledby={`${panelsId}-tab-2`}
                     hidden={selectedPanel !== 3}
                     className="min-h-0"
-                  >
-                    {resetPanel}
-                  </div>
+                  ></div>
                 </div>
               </aside>
             </MotionDiv>

@@ -209,7 +209,43 @@
       "imagesWarning": "Library images will be removed. Images still used on the canvas are kept. This cannot be undone.",
       "allImagesWarning": "All library and canvas images will be deleted from this browser. This cannot be undone.",
       "retention": "Unselected items are kept. This cannot be undone.",
-      "confirm": "Reset selected"
+      "confirm": "Reset selected",
+      "actions": {
+        "placements": {
+          "label": "Clear board content",
+          "description": "Keep dimensions, appearance and library images."
+        },
+        "canvas": {
+          "label": "New empty 2x2 grid",
+          "description": "Clear the heading and placements. Keep appearance and library images."
+        },
+        "theme": {
+          "label": "Restore appearance",
+          "description": "Keep board content, dimensions and library images."
+        },
+        "images": {
+          "label": "Clear library",
+          "description": "Keep images used on the board. Delete unused images from this browser."
+        }
+      },
+      "advanced": "Advanced combinations",
+      "keepPalette": "Current palette",
+      "useDefaults": "Ink defaults",
+      "everything": "Reset everything",
+      "confirmAll": "Delete images and reset everything",
+      "newGrid": "Create empty 2x2 grid",
+      "restoreAppearance": "Restore appearance",
+      "clearCards": "{count, plural, =0 {Clear board content} one {Clear # card} other {Clear # cards}}",
+      "clearImages": "{count, plural, =0 {Clear library} one {Remove # library image} other {Remove # library images}}",
+      "cardImpact": "{count, plural, =0 {No card content to clear.} one {# card will be cleared.} other {# cards will be cleared.}} The canvas heading will also be cleared.",
+      "deletedImpact": "{count, plural, =0 {No image files will be deleted.} one {# image file will be deleted.} other {# image files will be deleted.}}",
+      "retainedImpact": "{count, plural, =0 {No board image files will remain.} one {# image used on the board will be kept, but removed from the library.} other {# images used on the board will be kept, but removed from the library.}}",
+      "gridImpact": "The layout will return to 2 rows and 2 columns.",
+      "themeImpact": "Colors and appearance settings will be restored.",
+      "keepLibrary": "Library images will be kept.",
+      "irreversible": "This cannot be undone.",
+      "cancel": "Cancel",
+      "back": "Back"
     },
     "region": "Grid editor",
     "headingLabel": "Grid heading",

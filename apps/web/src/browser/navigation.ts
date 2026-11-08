@@ -30,6 +30,7 @@ const browsingSchema = z.object({
 const stateSchema = z.object({
   selectedPanel: z.union([z.literal(0), z.literal(2), z.literal(3)]).default(0),
   sidebarOpen: z.boolean().default(true),
+  zoom: z.number().min(50).max(200).multipleOf(5).default(100).catch(100),
   librarySource: sourceSchema.default("imported"),
   pickerSource: sourceSchema.default("imported"),
   browsing: z.record(z.string().max(60), browsingSchema).default({}),
@@ -267,7 +268,9 @@ export function useEditorState<Key extends keyof Omit<EditorState, "browsing">>(
     const next = typeof value === "function" ? value(previous[key]) : value;
     update(
       { ...previous, [key]: next },
-      key === "pickerSource" || key === "sidebarOpen" ? "silent" : "push",
+      key === "pickerSource" || key === "sidebarOpen" || key === "zoom"
+        ? "silent"
+        : "push",
     );
   };
   return [current[key], set] as const;
