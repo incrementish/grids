@@ -12191,6 +12191,55 @@ test("touch cards toggle tools and drag moves swaps and cancels without opening 
     }
     await expect(page.locator("[data-drag-floating]")).toBeVisible();
 
+    const floating = page.locator("[data-drag-floating]");
+    await expect(floating).toHaveCSS("left", "0px");
+    await expect(floating).toHaveCSS("top", "0px");
+    await page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
+    const originalTransform = await floating.evaluate(
+      (element) => getComputedStyle(element).transform,
+    );
+    await page.evaluate(() => {
+      window.__dragLayoutReads = 0;
+      window.__dragOriginalBounds = Element.prototype.getBoundingClientRect;
+      Element.prototype.getBoundingClientRect = function () {
+        if (
+          this.matches(
+            ".image-card, .cell-heading, .library-heading, .drag-preview-heading",
+          )
+        )
+          window.__dragLayoutReads++;
+        return window.__dragOriginalBounds.call(this);
+      };
+    });
+    for (let step = 1; step <= 5; step++) {
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: end.x + step * 3, y: end.y + step * 3, id: 1 }],
+      });
+    }
+    await expect
+      .poll(() =>
+        floating.evaluate((element) => getComputedStyle(element).transform),
+      )
+      .not.toBe(originalTransform);
+    const layoutReads = await page.evaluate(() => {
+      Element.prototype.getBoundingClientRect = window.__dragOriginalBounds;
+      const reads = window.__dragLayoutReads;
+      delete window.__dragLayoutReads;
+      delete window.__dragOriginalBounds;
+      return reads;
+    });
+    expect(layoutReads).toBe(0);
+    if (sourceIndex === 0 && targetIndex === 2)
+      await page.screenshot({
+        path: testInfo.outputPath("touch-drag-transform-preview.png"),
+      });
+
     await session.send("Input.dispatchTouchEvent", {
       type: cancel ? "touchCancel" : "touchEnd",
       touchPoints: [],

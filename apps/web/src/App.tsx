@@ -12,6 +12,7 @@ import {
   type DragEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { motion, useMotionValue } from "motion/react";
 import { Toaster, toast } from "sonner";
 import { PanelsTopLeft, Download, ImagePlus, RefreshCw } from "lucide-react";
 import {
@@ -240,10 +241,13 @@ export default function App() {
   const uploadTarget = useRef<string | null>(null);
   const addImagesButton = useRef<HTMLButtonElement>(null);
   const [libraryDragOver, setLibraryDragOver] = useState(false);
+  const touchDragX = useMotionValue(0);
+  const touchDragY = useMotionValue(0);
   const [cardDrag, setCardDrag] = useState<{
     source: CardDragSource;
     visual: CardDragVisual;
     targetId: string | null;
+    touch?: boolean;
   } | null>(null);
   useEffect(() => {
     const finish = () => {
@@ -606,14 +610,26 @@ export default function App() {
       }
       return;
     }
-    setCardDrag({
-      source,
-      visual: source.kind === "asset" ? libraryDragVisual(visual) : visual,
-      targetId:
-        validTarget && (source.kind !== "cell" || source.cellId !== targetId)
-          ? targetId
-          : null,
-    });
+    const previewVisual =
+      source.kind === "asset"
+        ? (cardDrag?.visual ?? libraryDragVisual(visual))
+        : visual;
+    touchDragX.set(visual.x - previewVisual.offsetX);
+    touchDragY.set(visual.y - previewVisual.offsetY - 8);
+    const nextTargetId =
+      validTarget && (source.kind !== "cell" || source.cellId !== targetId)
+        ? targetId
+        : null;
+    setCardDrag((current) =>
+      current?.touch && current.targetId === nextTargetId
+        ? current
+        : {
+            source,
+            visual: previewVisual,
+            targetId: nextTargetId,
+            touch: true,
+          },
+    );
   };
   const drop = (event: DragEvent<HTMLDivElement>, index: number) => {
     event.preventDefault();
@@ -1213,17 +1229,23 @@ export default function App() {
       </main>
       {cardDrag?.visual &&
         createPortal(
-          <div
+          <motion.div
             aria-hidden="true"
             inert
             data-drag-floating
-            className="pointer-events-none fixed z-100 opacity-100"
+            className="pointer-events-none fixed z-100 opacity-100 will-change-transform"
             style={{
               width: cardDrag.visual.width,
               height: cardDrag.visual.height,
-              left: cardDrag.visual.x - cardDrag.visual.offsetX,
-              top: cardDrag.visual.y - cardDrag.visual.offsetY - 8,
-              transform: "rotate(-2deg)",
+              left: cardDrag.touch
+                ? 0
+                : cardDrag.visual.x - cardDrag.visual.offsetX,
+              top: cardDrag.touch
+                ? 0
+                : cardDrag.visual.y - cardDrag.visual.offsetY - 8,
+              x: cardDrag.touch ? touchDragX : 0,
+              y: cardDrag.touch ? touchDragY : 0,
+              rotate: -2,
               transformOrigin: `${cardDrag.visual.offsetX}px ${cardDrag.visual.offsetY}px`,
               boxShadow: "var(--drag-shadow)",
               borderRadius: `${board.cornerRadius ?? 12.5}% / ${((board.cornerRadius ?? 12.5) * cardDrag.visual.width) / cardDrag.visual.height}%`,
@@ -1245,7 +1267,7 @@ export default function App() {
               onUpload={() => {}}
               onDrop={(event) => event.preventDefault()}
             />
-          </div>,
+          </motion.div>,
           document.body,
         )}
       <Toaster

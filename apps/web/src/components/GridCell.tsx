@@ -181,13 +181,13 @@ export function GridCell({
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const touchTapped = useRef(false);
   const bindTouchDrag = useDrag(
-    ({ xy, initial, last, canceled, tap, event, args }) => {
+    ({ xy, initial, last, canceled, tap, event, args, memo }) => {
       if (tap || !asset || !card.current || !onTouchDrag) return;
       if ("pointerType" in event && event.pointerType !== "touch") return;
       touchDragged.current = true;
       setImageHovered(false);
       setHoverTools(false);
-      const bounds = card.current.getBoundingClientRect();
+      const bounds: DOMRect = memo ?? card.current.getBoundingClientRect();
       const notify = () =>
         onTouchDrag(
           library
@@ -219,6 +219,7 @@ export function GridCell({
           (args[0] as (() => void) | undefined)?.();
         });
       } else notify();
+      return bounds;
     },
     {
       enabled:
